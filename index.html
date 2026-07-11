@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Wild Origin</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="ui">
+  <div id="stats" class="panel">
+    <div class="barRow"><span class="barLabel">Salud</span><div class="barTrack"><div id="bar-health" class="barFill fill-health" style="width:100%"></div></div></div>
+    <div class="barRow"><span class="barLabel">Hambre</span><div class="barTrack"><div id="bar-hunger" class="barFill fill-hunger" style="width:100%"></div></div></div>
+    <div class="barRow"><span class="barLabel">Sed</span><div class="barTrack"><div id="bar-thirst" class="barFill fill-thirst" style="width:100%"></div></div></div>
+    <div class="barRow"><span class="barLabel">Energía</span><div class="barTrack"><div id="bar-stam" class="barFill fill-stam" style="width:100%"></div></div></div>
+  </div>
+
+  <div id="clock" class="panel">
+    <div id="dayCount">Día 1</div>
+    <div id="timeLabel">☀ Amanecer</div>
+  </div>
+
+  <div id="inventory" class="panel">
+    <div class="invItem"><span class="invSwatch sw-wood"></span><span id="cnt-wood">0</span> Madera</div>
+    <div class="invItem"><span class="invSwatch sw-stone"></span><span id="cnt-stone">0</span> Piedra</div>
+    <div class="invItem"><span class="invSwatch sw-berry"></span><span id="cnt-berry">0</span> Bayas</div>
+    <div class="invItem" style="opacity:.7">(<span id="invCap">0/30</span>)</div>
+  </div>
+
+  <div id="equip" class="panel">Arma: <span id="weaponName">Manos</span></div>
+
+  <div id="controls" class="panel">
+    <b>WASD</b> mover &nbsp; <b>Shift</b> correr<br>
+    <b>E</b> recolectar / beber / dormir &nbsp; <b>Espacio</b> atacar<br>
+    <b>1</b> lanza &nbsp; <b>2</b> fogata &nbsp; <b>3</b> hacha &nbsp; <b>4</b> pico<br>
+    <b>5</b> mochila &nbsp; <b>6</b> refugio &nbsp; <b>Q</b> comer &nbsp; <b>Esc</b> menú
+  </div>
+
+  <div id="log" class="panel"></div>
+  <div id="craftHint" class="panel"></div>
+
+  <button id="menuBtn" class="panel hidden">☰ Menú (Esc)</button>
+
+  <div id="minimapWrap" class="panel hidden">
+    <canvas id="minimap" width="150" height="150"></canvas>
+    <div id="minimapLabel">Mapa</div>
+  </div>
+
+  <div id="title" class="panel">
+    <h1>WILD ORIGIN</h1>
+    <p>Sobrevivís mientras el bosque respira a tu alrededor</p>
+    <button class="startBtn" id="startBtn">Comenzar</button>
+    <div class="soundRow">
+      <label><input type="checkbox" id="muteToggleTitle"> Silenciar</label>
+      <input type="range" id="volumeSliderTitle" min="0" max="1" step="0.05" value="0.7">
+    </div>
+  </div>
+
+  <div id="gameOver" class="panel">
+    <h1>HAS CAÍDO</h1>
+    <p id="survivedText">Sobreviviste 0 días</p>
+    <button class="startBtn" id="restartBtn">Volver a intentar</button>
+  </div>
+
+  <div id="pauseMenu" class="panel">
+    <h2>Pausa</h2>
+    <button class="menuAction primary" id="resumeBtn">Continuar</button>
+    <button class="menuAction" id="pauseRestartBtn">Reiniciar partida</button>
+    <button class="menuAction" id="pauseMainMenuBtn">Salir al menú</button>
+    <div class="soundRow">
+      <label><input type="checkbox" id="muteTogglePause"> Silenciar</label>
+      <input type="range" id="volumeSliderPause" min="0" max="1" step="0.05" value="0.7">
+    </div>
+  </div>
+</div>
+
+<script type="module" src="js/game.js"></script>
+</body>
+</html>
