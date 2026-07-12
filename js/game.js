@@ -362,7 +362,9 @@ function bindUI() {
   document.getElementById('settingsBtnPause').addEventListener('click', () => openSettings('pause'));
   document.getElementById('settingsCloseBtn').addEventListener('click', () => closeSettings());
 
-  wireVolumeControls('volumeSlider', 'muteToggle');
+  wireVolumeControls('volumeSlider', 'muteToggle', v => SoundFX.setVolume(v), m => SoundFX.setMuted(m));
+  wireVolumeControls('volumeSliderSfx', 'muteToggleSfx', v => SoundFX.setSfxVolume(v), m => SoundFX.setSfxMuted(m));
+  wireVolumeControls('volumeSliderAmbient', 'muteToggleAmbient', v => SoundFX.setAmbientVolume(v), m => SoundFX.setAmbientMuted(m));
 }
 
 function init() {

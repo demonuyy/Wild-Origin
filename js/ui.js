@@ -175,9 +175,9 @@ export function goToMainMenu() {
   document.getElementById('title').classList.remove('hidden');
 }
 
-export function wireVolumeControls(sliderId, muteId) {
+export function wireVolumeControls(sliderId, muteId, onVolume, onMute) {
   const slider = document.getElementById(sliderId);
   const mute = document.getElementById(muteId);
-  slider.addEventListener('input', () => SoundFX.setVolume(parseFloat(slider.value)));
-  mute.addEventListener('change', () => SoundFX.setMuted(mute.checked));
+  slider.addEventListener('input', () => onVolume(parseFloat(slider.value)));
+  mute.addEventListener('change', () => onMute(mute.checked));
 }

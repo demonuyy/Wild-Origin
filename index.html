@@ -62,7 +62,7 @@
     <h1>WILD ORIGIN</h1>
     <p>Sobrevivís mientras el bosque respira a tu alrededor</p>
     <button class="startBtn" id="startBtn">Comenzar</button>
-    <button class="linkBtn" id="settingsBtnTitle">Ajustes</button>
+    <button class="startBtn secondary" id="settingsBtnTitle">Ajustes</button>
   </div>
 
   <div id="gameOver" class="panel">
@@ -103,8 +103,19 @@
     <div class="settingsSection">
       <div class="settingsSectionTitle">Sonido</div>
       <div class="soundRow">
-        <label><input type="checkbox" id="muteToggle"> Silenciar</label>
+        <span class="soundLabel">General</span>
         <input type="range" id="volumeSlider" min="0" max="1" step="0.05" value="0.7">
+        <label class="muteLabel"><input type="checkbox" id="muteToggle"> Silenciar</label>
+      </div>
+      <div class="soundRow">
+        <span class="soundLabel">Efectos</span>
+        <input type="range" id="volumeSliderSfx" min="0" max="1" step="0.05" value="1">
+        <label class="muteLabel"><input type="checkbox" id="muteToggleSfx"> Silenciar</label>
+      </div>
+      <div class="soundRow">
+        <span class="soundLabel">Ambiente</span>
+        <input type="range" id="volumeSliderAmbient" min="0" max="1" step="0.05" value="1">
+        <label class="muteLabel"><input type="checkbox" id="muteToggleAmbient"> Silenciar</label>
       </div>
     </div>
     <button class="menuAction primary" id="settingsCloseBtn">Volver</button>

@@ -4,6 +4,8 @@ import { SoundFX } from './audio.js';
 import { collectTreeResource, collectRockResource, collectBushResource, consumeBerry } from './inventory.js';
 import { removeEntity } from './world.js';
 
+let footstepTimer = 0;
+
 export function resetPlayer() {
   state.player.x = 0;
   state.player.y = 0;
@@ -106,6 +108,7 @@ export function trySleep() {
 export function tryAttack() {
   if (state.player.attackCooldown > 0) return;
   state.player.attackCooldown = state.player.hasSpear ? 0.5 : 0.7;
+  SoundFX.attackSwing();
   const range = state.player.attackRange + (state.player.hasSpear ? 18 : 0);
   let hitSomething = false;
   for (const w of state.wolves) {
@@ -146,6 +149,13 @@ export function updatePlayer(dt) {
     player.x += mx * spd * dt;
     player.y += my * spd * dt;
     if (sprint) player.stamina = clamp(player.stamina - 18 * dt, 0, 100);
+    footstepTimer -= dt;
+    if (footstepTimer <= 0) {
+      SoundFX.footstep(sprint ? 1.15 : 0.9);
+      footstepTimer = sprint ? 0.27 : 0.4;
+    }
+  } else {
+    footstepTimer = 0;
   }
   if (!state.keys['shift'] || !moved) {
     player.stamina = clamp(player.stamina + 9 * dt, 0, 100);
