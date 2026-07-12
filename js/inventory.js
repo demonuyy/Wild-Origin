@@ -5,15 +5,27 @@ import { removeEntity } from './world.js';
 
 export function collectTreeResource(t) {
   if (t.hits <= 0) return;
+  // Talar requiere el hacha, y no alcanza con tenerla craftada: tiene que
+  // estar equipada ("en la mano") en ese momento.
+  if (!state.player.hasAxe) {
+    SoundFX.craftFail();
+    showHint('Necesitás un <b>hacha</b> para talar árboles');
+    return;
+  }
+  if (state.player.equippedTool !== 'axe') {
+    SoundFX.craftFail();
+    showHint('Equipá el hacha (tecla 3) para talar');
+    return;
+  }
   if (invTotal() >= capFor()) {
     SoundFX.craftFail();
     showHint('Inventario lleno');
     return;
   }
-  let gained = state.player.hasAxe ? Math.floor(Math.random() * 3) + 3 : Math.floor(Math.random() * 3) + 2;
+  let gained = Math.floor(Math.random() * 3) + 3;
   gained = Math.min(gained, capFor() - invTotal());
   state.player.wood += gained;
-  t.hits -= state.player.hasAxe ? 2 : 1;
+  t.hits -= 2;
   SoundFX.chop();
   pushLog(`Talaste madera (+${gained})`);
   if (t.hits <= 0) {
@@ -23,20 +35,57 @@ export function collectTreeResource(t) {
 
 export function collectRockResource(r) {
   if (r.hits <= 0) return;
+  // Minar requiere el pico equipado en la mano, no solo poseído.
+  if (!state.player.hasPickaxe) {
+    SoundFX.craftFail();
+    showHint('Necesitás un <b>pico</b> para minar rocas');
+    return;
+  }
+  if (state.player.equippedTool !== 'pickaxe') {
+    SoundFX.craftFail();
+    showHint('Equipá el pico (tecla 4) para minar');
+    return;
+  }
   if (invTotal() >= capFor()) {
     SoundFX.craftFail();
     showHint('Inventario lleno');
     return;
   }
-  let gained = state.player.hasPickaxe ? Math.floor(Math.random() * 2) + 3 : Math.floor(Math.random() * 2) + 2;
+  let gained = Math.floor(Math.random() * 2) + 3;
   gained = Math.min(gained, capFor() - invTotal());
   state.player.stone += gained;
-  r.hits -= state.player.hasPickaxe ? 2 : 1;
+  r.hits -= 2;
   SoundFX.mine();
   pushLog(`Picaste piedra (+${gained})`);
   if (r.hits <= 0) {
     removeEntity('rocks', r);
   }
+}
+
+// Recolección a mano, sin ninguna herramienta: la única forma de conseguir
+// los primeros recursos para poder craftear el hacha y el pico.
+export function collectStick(s) {
+  if (invTotal() >= capFor()) {
+    SoundFX.craftFail();
+    showHint('Inventario lleno');
+    return;
+  }
+  state.player.wood += 1;
+  SoundFX.pickup();
+  pushLog('Recogiste un palo (+1)');
+  removeEntity('sticks', s);
+}
+
+export function collectStone(s) {
+  if (invTotal() >= capFor()) {
+    SoundFX.craftFail();
+    showHint('Inventario lleno');
+    return;
+  }
+  state.player.stone += 1;
+  SoundFX.pickup();
+  pushLog('Recogiste una piedra (+1)');
+  removeEntity('stones', s);
 }
 
 export function collectBushResource(b) {

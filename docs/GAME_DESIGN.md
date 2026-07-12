@@ -18,6 +18,16 @@ Exploración
 
 Vista superior (Top Down)
 
+Zoom controlable con la rueda del mouse (interpolado, no instantáneo)
+
+## Mundo
+
+Infinito, generado por chunks a medida que el jugador se mueve
+
+Cada chunk se genera de forma determinística a partir de una semilla, así que descargar y volver a cargar una zona no cambia su contenido
+
+Biomas suaves definidos por ruido 2D continuo (zonas más boscosas, más rocosas, etc.), sin costuras entre chunks
+
 ## Estilo gráfico
 
 Pixel Art

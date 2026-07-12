@@ -1,6 +1,9 @@
 export const DAY_LENGTH = 130;
 export const BASE_CAP = 30;
 export const BACKPACK_BONUS = 30;
+// Cuánto se apila cada material/baya en un slot del inventario. Las
+// herramientas nunca se apilan (siempre ocupan 1 slot entero).
+export const STACK_SIZE = 25;
 
 // Tamaño de cada "chunk" del mundo infinito (en unidades de mundo, como bloques de Minecraft
 // pero mucho más grandes ya que acá no hay grilla de tiles). El mundo se genera y descarga
@@ -40,6 +43,11 @@ export const state = {
   wolves: [],
   deer: [],
   grassDecor: [],
+  // Palos y piedras sueltos, recolectables a mano sin ninguna herramienta.
+  // Son el único recurso disponible hasta craftear hacha/pico, ya que talar
+  // árboles y minar rocas requiere tener esa herramienta en la mano.
+  sticks: [],
+  stones: [],
   player: {
     x: 0,
     y: 0,
@@ -57,6 +65,9 @@ export const state = {
     hasAxe: false,
     hasPickaxe: false,
     hasBackpack: false,
+    // Herramienta actualmente "en la mano" (null, 'axe' o 'pickaxe'). Tenerla
+    // en la mano (no solo poseerla) es lo que habilita talar/minar.
+    equippedTool: null,
     attackRange: 34,
     attackDamage: 12,
     attackCooldown: 0,

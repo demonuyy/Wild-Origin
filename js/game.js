@@ -1,10 +1,10 @@
 import { state, ctx, canvas, DAY_LENGTH, ZOOM_MIN, ZOOM_MAX, resize, rand, dist, clamp, isNightPhase } from './config.js';
 import { SoundFX } from './audio.js';
-import { generateWorld, updateChunks, drawGround, drawGrassDecor, drawPonds, drawTree, drawRock, drawBush } from './world.js';
+import { generateWorld, updateChunks, drawGround, drawGrassDecor, drawPonds, drawTree, drawRock, drawBush, drawStick, drawStone } from './world.js';
 import { updateDeer, drawDeer } from './animals.js';
 import { updateWolves, drawWolf } from './enemies.js';
 import { resetPlayer, tryInteract, tryAttack, updatePlayer, handleManualEat } from './player.js';
-import { tryCraftSpear, tryPlaceCampfire, tryCraftAxe, tryCraftPickaxe, tryCraftBackpack, tryPlaceShelter } from './crafting.js';
+import { tryCraftSpear, tryPlaceCampfire, tryCraftAxe, tryCraftPickaxe, tryCraftBackpack, tryPlaceShelter, tryEquipTool } from './crafting.js';
 import { drawCampfire, drawShelter } from './building.js';
 import { pushLog, showHint, updateEquipUI, updateHUD, endGame, openPause, closePause, goToMainMenu, wireVolumeControls, toggleInventory, closeInventory, isInventoryOpen, openSettings, closeSettings } from './ui.js';
 import { saveGame } from './save.js';
@@ -102,6 +102,32 @@ function drawPlayer(cam) {
     ctx.arc(sx + state.player.dir.x * 36, sy + state.player.dir.y * 36, 3, 0, Math.PI * 2);
     ctx.fill();
   }
+  // Hacha o pico "en la mano": solo se dibuja si esa es la herramienta activa,
+  // para que se note a simple vista que el jugador puede talar o minar ahora mismo.
+  if (state.player.equippedTool === 'axe' || state.player.equippedTool === 'pickaxe') {
+    const hx = sx + state.player.dir.x * 16;
+    const hy = sy + state.player.dir.y * 16 - 4;
+    ctx.strokeStyle = '#5a4530';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(hx, hy + 10);
+    ctx.lineTo(hx + state.player.dir.x * 4, hy - 8);
+    ctx.stroke();
+    ctx.fillStyle = '#b7b6ac';
+    ctx.beginPath();
+    if (state.player.equippedTool === 'axe') {
+      ctx.moveTo(hx + state.player.dir.x * 4 - 5, hy - 8);
+      ctx.lineTo(hx + state.player.dir.x * 4 + 5, hy - 10);
+      ctx.lineTo(hx + state.player.dir.x * 4 + 3, hy - 2);
+      ctx.lineTo(hx + state.player.dir.x * 4 - 4, hy - 3);
+    } else {
+      ctx.moveTo(hx + state.player.dir.x * 4 - 6, hy - 5);
+      ctx.lineTo(hx + state.player.dir.x * 4 + 6, hy - 11);
+      ctx.lineTo(hx + state.player.dir.x * 4 + 2, hy - 3);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
   ctx.fillStyle = '#e8933a';
   ctx.beginPath();
   ctx.arc(sx + state.player.dir.x * 10, sy + state.player.dir.y * 10 - 8, 2.2, 0, Math.PI * 2);
@@ -190,6 +216,8 @@ function render() {
   for (const t of state.trees) if (inView(t)) drawables.push({ y: t.y, type: 0, ref: t });
   for (const r of state.rocks) if (inView(r)) drawables.push({ y: r.y, type: 1, ref: r });
   for (const b of state.bushes) if (inView(b)) drawables.push({ y: b.y, type: 2, ref: b });
+  for (const s of state.sticks) if (inView(s)) drawables.push({ y: s.y, type: 8, ref: s });
+  for (const s of state.stones) if (inView(s)) drawables.push({ y: s.y, type: 9, ref: s });
   for (const f of state.campfires) if (inView(f)) drawables.push({ y: f.y, type: 3, ref: f });
   for (const s of state.shelters) if (inView(s)) drawables.push({ y: s.y, type: 4, ref: s });
   for (const d of state.deer) if (inView(d)) drawables.push({ y: d.y, type: 5, ref: d });
@@ -206,6 +234,8 @@ function render() {
       case 5: drawDeer(d.ref, cam, ctx); break;
       case 6: drawWolf(d.ref, cam, ctx); break;
       case 7: drawPlayer(cam); break;
+      case 8: drawStick(d.ref, cam, ctx); break;
+      case 9: drawStone(d.ref, cam, ctx); break;
     }
   }
 
@@ -282,8 +312,8 @@ function bindControls() {
     if (e.key === ' ') tryAttack();
     if (e.key === '1') tryCraftSpear();
     if (e.key === '2') tryPlaceCampfire();
-    if (e.key === '3') tryCraftAxe();
-    if (e.key === '4') tryCraftPickaxe();
+    if (e.key === '3') { if (state.player.hasAxe) tryEquipTool('axe'); else tryCraftAxe(); }
+    if (e.key === '4') { if (state.player.hasPickaxe) tryEquipTool('pickaxe'); else tryCraftPickaxe(); }
     if (e.key === '5') tryCraftBackpack();
     if (e.key === '6') tryPlaceShelter();
   });
@@ -311,8 +341,8 @@ function bindControls() {
   const HOTBAR_ACTIONS = {
     spear: tryCraftSpear,
     campfire: tryPlaceCampfire,
-    axe: tryCraftAxe,
-    pickaxe: tryCraftPickaxe,
+    axe: () => { if (state.player.hasAxe) tryEquipTool('axe'); else tryCraftAxe(); },
+    pickaxe: () => { if (state.player.hasPickaxe) tryEquipTool('pickaxe'); else tryCraftPickaxe(); },
     backpack: tryCraftBackpack,
     shelter: tryPlaceShelter
   };
@@ -321,6 +351,29 @@ function bindControls() {
       if (!state.running || state.gameOver || state.paused) return;
       const action = HOTBAR_ACTIONS[el.dataset.action];
       if (action) action();
+    });
+    // Soltar una herramienta arrastrada desde el inventario: si coincide con
+    // este slot y está craftada, queda equipada ("en la mano"); cualquier
+    // otra cosa (materiales, herramientas que no van acá) se rechaza.
+    el.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      el.classList.add('dragOver');
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('dragOver'));
+    el.addEventListener('drop', (e) => {
+      e.preventDefault();
+      el.classList.remove('dragOver');
+      if (!state.running || state.gameOver || state.paused) return;
+      const type = e.dataTransfer.getData('text/plain');
+      const action = el.dataset.action;
+      if (action === 'axe' && type === 'axe' && state.player.hasAxe) {
+        tryEquipTool('axe');
+      } else if (action === 'pickaxe' && type === 'pickaxe' && state.player.hasPickaxe) {
+        tryEquipTool('pickaxe');
+      } else {
+        SoundFX.craftFail();
+        showHint('Eso no se puede colocar ahí');
+      }
     });
   });
   document.getElementById('invToggleBtn').addEventListener('click', () => toggleInventory());

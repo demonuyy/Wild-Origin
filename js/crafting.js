@@ -36,16 +36,18 @@ export function tryPlaceCampfire() {
 
 export function tryCraftAxe() {
   if (state.player.hasAxe) {
-    showHint('Ya tenés un hacha');
+    tryEquipTool('axe');
     return;
   }
   if (state.player.wood >= 5 && state.player.stone >= 3) {
     state.player.wood -= 5;
     state.player.stone -= 3;
     state.player.hasAxe = true;
+    // Recién fabricada, queda directamente en la mano.
+    state.player.equippedTool = 'axe';
     SoundFX.craftOk();
     updateEquipUI();
-    pushLog('Fabricaste un hacha: talás madera más rápido');
+    pushLog('Fabricaste un hacha: ya la tenés en la mano, podés talar árboles');
   } else {
     SoundFX.craftFail();
     showHint('<b>Hacha</b>Necesitás 5 madera y 3 piedra');
@@ -54,19 +56,40 @@ export function tryCraftAxe() {
 
 export function tryCraftPickaxe() {
   if (state.player.hasPickaxe) {
-    showHint('Ya tenés un pico');
+    tryEquipTool('pickaxe');
     return;
   }
   if (state.player.wood >= 5 && state.player.stone >= 3) {
     state.player.wood -= 5;
     state.player.stone -= 3;
     state.player.hasPickaxe = true;
+    // Recién fabricado, queda directamente en la mano.
+    state.player.equippedTool = 'pickaxe';
     SoundFX.craftOk();
     updateEquipUI();
-    pushLog('Fabricaste un pico: picás piedra más rápido');
+    pushLog('Fabricaste un pico: ya lo tenés en la mano, podés minar rocas');
   } else {
     SoundFX.craftFail();
     showHint('<b>Pico</b>Necesitás 5 madera y 3 piedra');
+  }
+}
+
+// Cambia qué herramienta está "en la mano". Solo el hacha y el pico compiten
+// por ese lugar (la lanza y la mochila no lo necesitan). Volver a equipar la
+// que ya está en la mano la guarda (deja las manos libres).
+export function tryEquipTool(tool) {
+  const owned = tool === 'axe' ? state.player.hasAxe : state.player.hasPickaxe;
+  if (!owned) return;
+  if (state.player.equippedTool === tool) {
+    state.player.equippedTool = null;
+    SoundFX.click();
+    updateEquipUI();
+    pushLog('Guardaste la herramienta');
+  } else {
+    state.player.equippedTool = tool;
+    SoundFX.click();
+    updateEquipUI();
+    pushLog(tool === 'axe' ? 'Hacha en mano' : 'Pico en mano');
   }
 }
 

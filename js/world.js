@@ -61,6 +61,8 @@ export function generateWorld() {
   state.wolves = [];
   state.deer = [];
   state.grassDecor = [];
+  state.sticks = [];
+  state.stones = [];
   state.chunkStore = {};
   state.loadedChunks = new Set();
   state.worldSeed = Math.floor(Math.random() * 1e9);
@@ -76,7 +78,7 @@ function generateChunk(cx, cy) {
   const ox = cx * CHUNK_SIZE, oy = cy * CHUNK_SIZE;
   const nearSpawn = (x, y) => dist(x, y, 0, 0) < 260;
 
-  const trees = [], rocks = [], bushes = [], ponds = [], wolves = [], deer = [], grassDecor = [];
+  const trees = [], rocks = [], bushes = [], ponds = [], wolves = [], deer = [], grassDecor = [], sticks = [], stones = [];
 
   const tryPlace = (list, attempts, noiseFn, factory) => {
     for (let i = 0; i < attempts; i++) {
@@ -99,6 +101,24 @@ function generateChunk(cx, cy) {
   tryPlace(rocks, 9, rockNoise, (x, y) => ({ x, y, hits: 4, maxHits: 4, size: crand(0.8, 1.25) }));
   tryPlace(bushes, 7, bushNoise, (x, y) => ({ x, y, stock: 3, maxStock: 3, regrowTimer: 0, size: crand(0.85, 1.2) }));
 
+  // Palos y piedras sueltos: no dependen del ruido de bosque/roca (se pueden
+  // encontrar en cualquier parte) porque son el recurso inicial para poder
+  // craftear hacha/pico antes de poder talar o minar.
+  for (let i = 0; i < 5; i++) {
+    if (rnd() < 0.5) {
+      const x = ox + crand(0, CHUNK_SIZE);
+      const y = oy + crand(0, CHUNK_SIZE);
+      if (!nearSpawn(x, y)) sticks.push({ x, y, rot: crand(0, Math.PI * 2), chunkKey: key });
+    }
+  }
+  for (let i = 0; i < 5; i++) {
+    if (rnd() < 0.5) {
+      const x = ox + crand(0, CHUNK_SIZE);
+      const y = oy + crand(0, CHUNK_SIZE);
+      if (!nearSpawn(x, y)) stones.push({ x, y, rot: crand(0, Math.PI * 2), chunkKey: key });
+    }
+  }
+
   if (rnd() < 0.35) {
     const x = ox + crand(100, CHUNK_SIZE - 100);
     const y = oy + crand(100, CHUNK_SIZE - 100);
@@ -120,7 +140,7 @@ function generateChunk(cx, cy) {
     grassDecor.push({ x: ox + crand(0, CHUNK_SIZE), y: oy + crand(0, CHUNK_SIZE), s: crand(0.5, 1.3), rot: crand(0, Math.PI * 2), chunkKey: key });
   }
 
-  const data = { trees, rocks, bushes, ponds, wolves, deer, grassDecor };
+  const data = { trees, rocks, bushes, ponds, wolves, deer, grassDecor, sticks, stones };
   state.chunkStore[key] = data;
   return data;
 }
@@ -135,6 +155,8 @@ function attachChunk(key) {
   state.wolves.push(...data.wolves);
   state.deer.push(...data.deer);
   state.grassDecor.push(...data.grassDecor);
+  state.sticks.push(...data.sticks);
+  state.stones.push(...data.stones);
   state.loadedChunks.add(key);
 }
 
@@ -146,6 +168,8 @@ function detachChunk(key) {
   state.wolves = state.wolves.filter(o => o.chunkKey !== key);
   state.deer = state.deer.filter(o => o.chunkKey !== key);
   state.grassDecor = state.grassDecor.filter(o => o.chunkKey !== key);
+  state.sticks = state.sticks.filter(o => o.chunkKey !== key);
+  state.stones = state.stones.filter(o => o.chunkKey !== key);
   state.loadedChunks.delete(key);
 }
 
@@ -410,6 +434,71 @@ export function drawRock(r, cam, ctx) {
     ctx.ellipse(sx - 6 * s, sy + 2 * s, 5 * s, 3 * s, 0.4, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+// Palo suelto en el piso: recolectable a mano, sin necesitar ninguna herramienta.
+export function drawStick(s, cam, ctx) {
+  const sx = s.x - cam.x;
+  const sy = s.y - cam.y;
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(s.rot);
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.beginPath();
+  ctx.ellipse(0, 3, 11, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  const stickG = ctx.createLinearGradient(-9, 0, 9, 0);
+  stickG.addColorStop(0, '#3a2a1c');
+  stickG.addColorStop(0.5, '#6c5238');
+  stickG.addColorStop(1, '#3a2a1c');
+  ctx.strokeStyle = stickG;
+  ctx.lineWidth = 3.2;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-9, 0);
+  ctx.lineTo(9, 0);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-4, -1);
+  ctx.lineTo(2, 1);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Piedra suelta en el piso: recolectable a mano, sin necesitar ninguna herramienta.
+export function drawStone(s, cam, ctx) {
+  const sx = s.x - cam.x;
+  const sy = s.y - cam.y;
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.beginPath();
+  ctx.ellipse(sx, sy + 3, 8, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(s.rot);
+  const rg = ctx.createLinearGradient(-6, -5, 5, 4);
+  rg.addColorStop(0, '#98978c');
+  rg.addColorStop(0.5, '#75746a');
+  rg.addColorStop(1, '#4c4b44');
+  ctx.fillStyle = rg;
+  ctx.beginPath();
+  ctx.moveTo(-6, 2);
+  ctx.lineTo(-3, -4);
+  ctx.lineTo(3, -5);
+  ctx.lineTo(6, 0);
+  ctx.lineTo(2, 4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.beginPath();
+  ctx.moveTo(-3, -4);
+  ctx.lineTo(3, -5);
+  ctx.lineTo(0, -1);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
 }
 
 export function drawBush(b, cam, ctx) {

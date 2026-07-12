@@ -256,6 +256,7 @@ const SoundFX = (function () {
       }
     },
     berry() { tone(rand(500, 700), 0.12, 'triangle', 0.2, rand(750, 900)); },
+    pickup() { tone(rand(340, 420), 0.09, 'triangle', 0.18, rand(260, 320)); },
     drink() {
       if (!playRandom('drink', { vol: 0.5, rateJitter: 0.05 })) {
         noiseBurst(0.25, 'bandpass', 1800, 0.15);

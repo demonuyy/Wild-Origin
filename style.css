@@ -91,6 +91,10 @@
   .hotSlot.disabled{opacity:.42;cursor:default;}
   .hotSlot.disabled:hover{background:rgba(10,18,12,.65);}
   .hotSlotInv{border-color:rgba(203,216,195,.35) !important;}
+  /* Herramienta actualmente en la mano (hacha/pico): sigue siendo clickeable
+     para poder guardarla, a diferencia de "owned" a secas. */
+  .hotSlot.active{border-color:rgba(255,224,120,.9);background:rgba(120,95,40,.35);box-shadow:0 0 10px rgba(255,224,120,.45);cursor:pointer;}
+  .hotSlot.active:hover{background:rgba(120,95,40,.5);}
   .hotIcon{font-size:19px;line-height:1;}
   .hotKey{position:absolute;top:2px;left:5px;font-size:9px;opacity:.7;letter-spacing:.5px;}
   .hotCost{font-size:8.5px;opacity:.8;margin-top:3px;letter-spacing:.3px;}
@@ -99,16 +103,22 @@
   #invPanel.show{display:block;pointer-events:auto;}
   #invPanelHeader{font-size:17px;letter-spacing:2px;text-transform:uppercase;margin-bottom:16px;color:var(--mist);}
   #invPanelCap{opacity:.6;font-size:12.5px;margin-left:8px;letter-spacing:0;text-transform:none;}
-  .invGrid{display:flex;gap:10px;justify-content:center;margin-bottom:6px;flex-wrap:wrap;}
-  .invSlot{width:72px;height:78px;background:rgba(203,216,195,.06);border:1px solid rgba(203,216,195,.2);border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;}
-  .invSlot.equipSlot{transition:opacity .2s ease,border-color .2s ease,background .2s ease;}
-  .invSlot.equipSlot.owned{border-color:rgba(140,175,110,.75);background:rgba(60,90,50,.3);}
-  .invSlot.equipSlot:not(.owned){opacity:.35;}
-  .invIcon{font-size:22px;}
-  .invCount{font-size:14px;font-weight:bold;color:var(--mist);}
-  .invName{font-size:9px;letter-spacing:1px;text-transform:uppercase;opacity:.75;}
-  #invPanelDivider{margin:16px 0 10px;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:.55;border-top:1px solid rgba(203,216,195,.15);padding-top:12px;}
+  /* Grilla fija de 5 columnas x 2 filas (10 slots). Los materiales/bayas se
+     apilan hasta STACK_SIZE por slot; las herramientas ocupan un slot entero
+     y nunca se apilan. */
+  .invGrid2{display:grid;grid-template-columns:repeat(5,64px);grid-template-rows:repeat(2,64px);gap:8px;justify-content:center;margin-bottom:4px;}
+  .invSlot2{position:relative;width:64px;height:64px;background:rgba(203,216,195,.06);border:1px solid rgba(203,216,195,.2);border-radius:6px;display:flex;align-items:center;justify-content:center;transition:border-color .15s ease,background .15s ease,box-shadow .15s ease;}
+  .invSlot2.empty{background:rgba(203,216,195,.03);}
+  .invSlot2.filled{cursor:grab;}
+  .invSlot2.filled:active{cursor:grabbing;}
+  .invSlot2.toolSlot{border-color:rgba(140,175,110,.55);background:rgba(60,90,50,.22);}
+  .invSlot2.toolSlot.active{border-color:rgba(255,224,120,.9);background:rgba(120,95,40,.35);box-shadow:0 0 8px rgba(255,224,120,.4);}
+  .invSlot2.dragging{opacity:.35;}
+  .invIcon2{font-size:24px;}
+  .stackCount{position:absolute;right:4px;bottom:2px;font-size:11px;font-weight:bold;color:var(--mist);text-shadow:0 1px 2px rgba(0,0,0,.9);}
   .invHint{margin-top:16px;font-size:10.5px;opacity:.55;letter-spacing:.5px;}
   .invHint b{color:var(--ember-glow);}
+  /* Slot de la hotbar recibiendo un item arrastrado desde el inventario. */
+  .hotSlot.dragOver{border-color:rgba(255,224,120,.95);box-shadow:0 0 12px rgba(255,224,120,.6);}
 
   .hidden{display:none !important;}

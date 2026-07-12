@@ -14,7 +14,9 @@ export function saveGame() {
       shelters: state.shelters,
       wolves: state.wolves,
       deer: state.deer,
-      grassDecor: state.grassDecor
+      grassDecor: state.grassDecor,
+      sticks: state.sticks,
+      stones: state.stones
     }
   };
   localStorage.setItem('wildOriginSave', JSON.stringify(data));
@@ -37,6 +39,8 @@ export function loadGame() {
     state.wolves = data.world?.wolves || [];
     state.deer = data.world?.deer || [];
     state.grassDecor = data.world?.grassDecor || [];
+    state.sticks = data.world?.sticks || [];
+    state.stones = data.world?.stones || [];
     return true;
   } catch {
     return false;

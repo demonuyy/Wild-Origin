@@ -24,15 +24,35 @@
 
 ## v0.2
 
-⬜ Menú de crafteo
+✅ Menú de crafteo (hotbar con teclas 1-6 y clic)
 
-⬜ Guardar partida
+✅ Guardar partida (autoguardado en localStorage cada frame)
 
-⬜ Cargar partida
+⬜ Cargar partida (la función `loadGame()` ya existe en `save.js` pero todavía no se llama desde la UI/inicio)
 
-⬜ Inventario mejorado
+✅ Inventario mejorado (panel dedicado con capacidad máxima, tecla "I")
 
-⬜ Sonidos mejores
+✅ Sonidos mejores (samples reales por categoría + buses de volumen separados: general, efectos, ambiente)
+
+---
+
+## Extras ya implementados (no estaban en el roadmap original)
+
+✅ Mundo infinito por chunks, generación procedural con semilla
+
+✅ Zoom de cámara (rueda del mouse)
+
+✅ Minimapa
+
+✅ Menú de pausa y panel de ajustes de volumen
+
+✅ Combate cuerpo a cuerpo con cooldown y retroceso
+
+✅ Sprint con consumo de energía
+
+✅ IA de fauna: lobos que huyen del fuego/refugio, ciervos que huyen del jugador
+
+✅ Regeneración de bayas en arbustos y duración limitada de fogatas
 
 ---
 

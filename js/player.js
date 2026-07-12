@@ -1,7 +1,7 @@
 import { state, clamp, dist, DAY_LENGTH, invTotal, capFor } from './config.js';
 import { pushLog, showHint, updateEquipUI, updateHUD } from './ui.js';
 import { SoundFX } from './audio.js';
-import { collectTreeResource, collectRockResource, collectBushResource, consumeBerry } from './inventory.js';
+import { collectTreeResource, collectRockResource, collectBushResource, consumeBerry, collectStick, collectStone } from './inventory.js';
 import { removeEntity } from './world.js';
 
 let footstepTimer = 0;
@@ -20,6 +20,7 @@ export function resetPlayer() {
   state.player.hasAxe = false;
   state.player.hasPickaxe = false;
   state.player.hasBackpack = false;
+  state.player.equippedTool = null;
   state.player.attackDamage = 12;
   state.player.attackRange = 34;
   state.player.attackCooldown = 0;
@@ -52,6 +53,20 @@ export function tryInteract() {
       best = { type: 'bush', obj: b };
     }
   }
+  for (const s of state.sticks) {
+    const d = dist(state.player.x, state.player.y, s.x, s.y);
+    if (d < bestD) {
+      bestD = d;
+      best = { type: 'stick', obj: s };
+    }
+  }
+  for (const s of state.stones) {
+    const d = dist(state.player.x, state.player.y, s.x, s.y);
+    if (d < bestD) {
+      bestD = d;
+      best = { type: 'stone', obj: s };
+    }
+  }
   for (const s of state.shelters) {
     const d = dist(state.player.x, state.player.y, s.x, s.y);
     if (d < bestD) {
@@ -80,6 +95,10 @@ export function tryInteract() {
     collectRockResource(best.obj);
   } else if (best.type === 'bush') {
     collectBushResource(best.obj);
+  } else if (best.type === 'stick') {
+    collectStick(best.obj);
+  } else if (best.type === 'stone') {
+    collectStone(best.obj);
   } else if (best.type === 'pond') {
     state.player.thirst = 100;
     SoundFX.drink();

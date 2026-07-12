@@ -1,4 +1,4 @@
-import { state, clamp, DAY_LENGTH, invTotal, capFor } from './config.js';
+import { state, clamp, DAY_LENGTH, invTotal, capFor, STACK_SIZE } from './config.js';
 import { SoundFX } from './audio.js';
 
 let hintTimeout = null;
@@ -8,8 +8,8 @@ let hintTimeout = null;
 const HOTBAR_CONFIG = {
   spear: { wood: 4, stone: 2, ownedKey: 'hasSpear' },
   campfire: { wood: 6, stone: 0, ownedKey: null },
-  axe: { wood: 5, stone: 3, ownedKey: 'hasAxe' },
-  pickaxe: { wood: 5, stone: 3, ownedKey: 'hasPickaxe' },
+  axe: { wood: 5, stone: 3, ownedKey: 'hasAxe', equipKey: 'axe' },
+  pickaxe: { wood: 5, stone: 3, ownedKey: 'hasPickaxe', equipKey: 'pickaxe' },
   backpack: { wood: 8, stone: 4, ownedKey: 'hasBackpack' },
   shelter: { wood: 15, stone: 8, ownedKey: null }
 };
@@ -45,25 +45,98 @@ export function updateHotbar() {
     if (!cfg) return;
     const owned = cfg.ownedKey && state.player[cfg.ownedKey];
     const affordable = state.player.wood >= cfg.wood && state.player.stone >= cfg.stone;
+    const equipped = cfg.equipKey && state.player.equippedTool === cfg.equipKey;
     el.classList.toggle('owned', !!owned);
     el.classList.toggle('affordable', !owned && affordable);
     el.classList.toggle('disabled', !owned && !affordable);
+    // Hacha/pico: además de "poseído" importa si están en la mano, ya que
+    // eso es lo que habilita talar/minar.
+    el.classList.toggle('active', !!equipped);
+    const costEl = el.querySelector('.hotCost');
     if (owned) {
-      const costEl = el.querySelector('.hotCost');
-      if (costEl.textContent !== 'Equipado') costEl.textContent = 'Equipado';
+      const label = cfg.equipKey ? (equipped ? 'En mano' : 'Guardado') : 'Equipado';
+      if (costEl.textContent !== label) costEl.textContent = label;
     }
   });
 }
 
+// ---------- Inventario en grilla (5 columnas x 2 filas = 10 slots) ----------
+// Los materiales/bayas siguen viviendo como contadores simples en state.player
+// (wood/stone/berries), igual que antes: acá solo se "parten" en stacks de
+// STACK_SIZE para mostrarlos. Las herramientas (no se apilan) ocupan un slot
+// entero cada una, solo si el jugador la tiene.
+const INV_SLOT_COUNT = 10;
+const ITEM_INFO = {
+  wood: { icon: '🌲', name: 'Madera', stackable: true },
+  stone: { icon: '🪨', name: 'Piedra', stackable: true },
+  berries: { icon: '🍓', name: 'Bayas', stackable: true },
+  spear: { icon: '🔱', name: 'Lanza', stackable: false },
+  axe: { icon: '🪓', name: 'Hacha', stackable: false },
+  pickaxe: { icon: '⛏️', name: 'Pico', stackable: false },
+  backpack: { icon: '🎒', name: 'Mochila', stackable: false }
+};
+
+function buildInventorySlots() {
+  const slots = [];
+  const materials = [['wood', state.player.wood], ['stone', state.player.stone], ['berries', state.player.berries]];
+  for (const [type, amount] of materials) {
+    let remaining = amount;
+    while (remaining > 0) {
+      slots.push({ type, count: Math.min(STACK_SIZE, remaining) });
+      remaining -= STACK_SIZE;
+    }
+  }
+  const tools = [['spear', state.player.hasSpear], ['axe', state.player.hasAxe], ['pickaxe', state.player.hasPickaxe], ['backpack', state.player.hasBackpack]];
+  for (const [type, owned] of tools) {
+    if (owned) slots.push({ type, count: 1 });
+  }
+  while (slots.length < INV_SLOT_COUNT) slots.push(null);
+  return slots.slice(0, INV_SLOT_COUNT);
+}
+
+// Se evita reconstruir la grilla si nada cambió desde el último render: además
+// de ser más barato, es lo que permite arrastrar un item sin que el propio
+// refresco por-frame de la UI borre el elemento a mitad del drag.
+let lastInvSignature = null;
+
+function renderInventoryGrid() {
+  const slots = buildInventorySlots();
+  const signature = JSON.stringify(slots) + '|' + state.player.equippedTool;
+  if (signature === lastInvSignature) return;
+  lastInvSignature = signature;
+
+  const grid = document.getElementById('invGrid2');
+  grid.innerHTML = '';
+  for (const item of slots) {
+    const el = document.createElement('div');
+    el.className = 'invSlot2';
+    if (!item) {
+      el.classList.add('empty');
+      grid.appendChild(el);
+      continue;
+    }
+    const info = ITEM_INFO[item.type];
+    el.classList.add('filled');
+    if (!info.stackable) {
+      el.classList.add('toolSlot');
+      if (state.player.equippedTool === item.type) el.classList.add('active');
+    }
+    el.title = info.name;
+    el.innerHTML = `<span class="invIcon2">${info.icon}</span>` + (info.stackable ? `<span class="stackCount">${item.count}</span>` : '');
+    el.draggable = true;
+    el.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', item.type);
+      e.dataTransfer.effectAllowed = 'move';
+      el.classList.add('dragging');
+    });
+    el.addEventListener('dragend', () => el.classList.remove('dragging'));
+    grid.appendChild(el);
+  }
+}
+
 export function updateInventoryPanel() {
-  document.getElementById('inv-wood').textContent = state.player.wood;
-  document.getElementById('inv-stone').textContent = state.player.stone;
-  document.getElementById('inv-berry').textContent = state.player.berries;
   document.getElementById('invPanelCap').textContent = `${invTotal()}/${capFor()}`;
-  document.getElementById('equip-spear').classList.toggle('owned', state.player.hasSpear);
-  document.getElementById('equip-axe').classList.toggle('owned', state.player.hasAxe);
-  document.getElementById('equip-pick').classList.toggle('owned', state.player.hasPickaxe);
-  document.getElementById('equip-pack').classList.toggle('owned', state.player.hasBackpack);
+  renderInventoryGrid();
 }
 
 export function isInventoryOpen() {
