@@ -21,20 +21,31 @@
     <div id="timeLabel">☀ Amanecer</div>
   </div>
 
-  <div id="inventory" class="panel">
-    <div class="invItem"><span class="invSwatch sw-wood"></span><span id="cnt-wood">0</span> Madera</div>
-    <div class="invItem"><span class="invSwatch sw-stone"></span><span id="cnt-stone">0</span> Piedra</div>
-    <div class="invItem"><span class="invSwatch sw-berry"></span><span id="cnt-berry">0</span> Bayas</div>
-    <div class="invItem" style="opacity:.7">(<span id="invCap">0/30</span>)</div>
+  <div id="hotbar" class="panel hidden">
+    <div class="hotSlot" data-action="spear"><span class="hotIcon">🔱</span><span class="hotKey">1</span><span class="hotCost">4🌲 2🪨</span></div>
+    <div class="hotSlot" data-action="campfire"><span class="hotIcon">🔥</span><span class="hotKey">2</span><span class="hotCost">6🌲</span></div>
+    <div class="hotSlot" data-action="axe"><span class="hotIcon">🪓</span><span class="hotKey">3</span><span class="hotCost">5🌲 3🪨</span></div>
+    <div class="hotSlot" data-action="pickaxe"><span class="hotIcon">⛏️</span><span class="hotKey">4</span><span class="hotCost">5🌲 3🪨</span></div>
+    <div class="hotSlot" data-action="backpack"><span class="hotIcon">🎒</span><span class="hotKey">5</span><span class="hotCost">8🌲 4🪨</span></div>
+    <div class="hotSlot" data-action="shelter"><span class="hotIcon">⛺</span><span class="hotKey">6</span><span class="hotCost">15🌲 8🪨</span></div>
+    <div class="hotSlot hotSlotInv" id="invToggleBtn"><span class="hotIcon">🎒</span><span class="hotKey">I</span><span class="hotCost">Inventario</span></div>
   </div>
 
-  <div id="equip" class="panel">Arma: <span id="weaponName">Manos</span></div>
-
-  <div id="controls" class="panel">
-    <b>WASD</b> mover &nbsp; <b>Shift</b> correr<br>
-    <b>E</b> recolectar / beber / dormir &nbsp; <b>Espacio</b> atacar<br>
-    <b>1</b> lanza &nbsp; <b>2</b> fogata &nbsp; <b>3</b> hacha &nbsp; <b>4</b> pico<br>
-    <b>5</b> mochila &nbsp; <b>6</b> refugio &nbsp; <b>Q</b> comer &nbsp; <b>Esc</b> menú
+  <div id="invPanel" class="panel">
+    <div id="invPanelHeader">Inventario <span id="invPanelCap">0/30</span></div>
+    <div class="invGrid">
+      <div class="invSlot"><span class="invIcon">🌲</span><span class="invCount" id="inv-wood">0</span><span class="invName">Madera</span></div>
+      <div class="invSlot"><span class="invIcon">🪨</span><span class="invCount" id="inv-stone">0</span><span class="invName">Piedra</span></div>
+      <div class="invSlot"><span class="invIcon">🍓</span><span class="invCount" id="inv-berry">0</span><span class="invName">Bayas</span></div>
+    </div>
+    <div id="invPanelDivider">Equipo</div>
+    <div class="invGrid">
+      <div class="invSlot equipSlot" id="equip-spear"><span class="invIcon">🔱</span><span class="invName">Lanza</span></div>
+      <div class="invSlot equipSlot" id="equip-axe"><span class="invIcon">🪓</span><span class="invName">Hacha</span></div>
+      <div class="invSlot equipSlot" id="equip-pick"><span class="invIcon">⛏️</span><span class="invName">Pico</span></div>
+      <div class="invSlot equipSlot" id="equip-pack"><span class="invIcon">🎒</span><span class="invName">Mochila</span></div>
+    </div>
+    <div class="invHint">Presioná <b>I</b> o <b>Esc</b> para cerrar</div>
   </div>
 
   <div id="log" class="panel"></div>
@@ -51,10 +62,7 @@
     <h1>WILD ORIGIN</h1>
     <p>Sobrevivís mientras el bosque respira a tu alrededor</p>
     <button class="startBtn" id="startBtn">Comenzar</button>
-    <div class="soundRow">
-      <label><input type="checkbox" id="muteToggleTitle"> Silenciar</label>
-      <input type="range" id="volumeSliderTitle" min="0" max="1" step="0.05" value="0.7">
-    </div>
+    <button class="linkBtn" id="settingsBtnTitle">Ajustes</button>
   </div>
 
   <div id="gameOver" class="panel">
@@ -67,11 +75,39 @@
     <h2>Pausa</h2>
     <button class="menuAction primary" id="resumeBtn">Continuar</button>
     <button class="menuAction" id="pauseRestartBtn">Reiniciar partida</button>
+    <button class="menuAction" id="settingsBtnPause">Ajustes</button>
     <button class="menuAction" id="pauseMainMenuBtn">Salir al menú</button>
-    <div class="soundRow">
-      <label><input type="checkbox" id="muteTogglePause"> Silenciar</label>
-      <input type="range" id="volumeSliderPause" min="0" max="1" step="0.05" value="0.7">
+  </div>
+
+  <div id="settingsPanel" class="panel">
+    <h2>Ajustes</h2>
+    <div class="settingsSection">
+      <div class="settingsSectionTitle">Controles</div>
+      <div class="controlsList">
+        <div class="controlsRow"><b>WASD</b><span>Moverse</span></div>
+        <div class="controlsRow"><b>Shift</b><span>Correr</span></div>
+        <div class="controlsRow"><b>E</b><span>Recolectar / beber / dormir</span></div>
+        <div class="controlsRow"><b>Espacio</b><span>Atacar</span></div>
+        <div class="controlsRow"><b>1</b><span>Craftear lanza</span></div>
+        <div class="controlsRow"><b>2</b><span>Encender fogata</span></div>
+        <div class="controlsRow"><b>3</b><span>Craftear hacha</span></div>
+        <div class="controlsRow"><b>4</b><span>Craftear pico</span></div>
+        <div class="controlsRow"><b>5</b><span>Craftear mochila</span></div>
+        <div class="controlsRow"><b>6</b><span>Construir refugio</span></div>
+        <div class="controlsRow"><b>Q</b><span>Comer bayas</span></div>
+        <div class="controlsRow"><b>I</b><span>Inventario</span></div>
+        <div class="controlsRow"><b>Esc</b><span>Menú de pausa</span></div>
+        <div class="controlsRow"><b>Rueda del mouse</b><span>Acercar / alejar cámara</span></div>
+      </div>
     </div>
+    <div class="settingsSection">
+      <div class="settingsSectionTitle">Sonido</div>
+      <div class="soundRow">
+        <label><input type="checkbox" id="muteToggle"> Silenciar</label>
+        <input type="range" id="volumeSlider" min="0" max="1" step="0.05" value="0.7">
+      </div>
+    </div>
+    <button class="menuAction primary" id="settingsCloseBtn">Volver</button>
   </div>
 </div>
 

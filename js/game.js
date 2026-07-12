@@ -1,68 +1,95 @@
-import { state, ctx, canvas, WORLD_W, WORLD_H, DAY_LENGTH, resize, rand, dist, clamp, isNightPhase, capFor, invTotal } from './config.js';
+import { state, ctx, canvas, DAY_LENGTH, ZOOM_MIN, ZOOM_MAX, resize, rand, dist, clamp, isNightPhase } from './config.js';
 import { SoundFX } from './audio.js';
-import { generateWorld, drawGround, drawGrassDecor, drawPonds, drawTree, drawRock, drawBush } from './world.js';
+import { generateWorld, updateChunks, drawGround, drawGrassDecor, drawPonds, drawTree, drawRock, drawBush } from './world.js';
 import { updateDeer, drawDeer } from './animals.js';
 import { updateWolves, drawWolf } from './enemies.js';
 import { resetPlayer, tryInteract, tryAttack, updatePlayer, handleManualEat } from './player.js';
 import { tryCraftSpear, tryPlaceCampfire, tryCraftAxe, tryCraftPickaxe, tryCraftBackpack, tryPlaceShelter } from './crafting.js';
 import { drawCampfire, drawShelter } from './building.js';
-import { pushLog, showHint, updateEquipUI, updateHUD, endGame, openPause, closePause, goToMainMenu, wireVolumeControls } from './ui.js';
+import { pushLog, showHint, updateEquipUI, updateHUD, endGame, openPause, closePause, goToMainMenu, wireVolumeControls, toggleInventory, closeInventory, isInventoryOpen, openSettings, closeSettings } from './ui.js';
 import { saveGame } from './save.js';
 
-function renderMinimap(cam) {
+// El minimapa es infinito como el mundo: no hay un WORLD_W/H para escalar,
+// así que se centra siempre en el jugador y muestra una ventana fija a su alrededor.
+const MINIMAP_RANGE = 1800; // unidades de mundo visibles a cada lado del jugador
+
+function renderMinimap(cam, viewW, viewH) {
   const mc = document.getElementById('minimap');
   const mctx = mc.getContext('2d');
   const W = mc.width;
   const H = mc.height;
-  const sx = W / WORLD_W;
-  const sy = H / WORLD_H;
+  const scale = W / (MINIMAP_RANGE * 2);
+  const px = state.player.x, py = state.player.y;
+  const toMap = (wx, wy) => [W / 2 + (wx - px) * scale, H / 2 + (wy - py) * scale];
+
   mctx.clearRect(0, 0, W, H);
   mctx.fillStyle = '#1c2e1a';
   mctx.fillRect(0, 0, W, H);
 
   mctx.fillStyle = '#3d6b7a';
-  for (const p of state.ponds) { mctx.beginPath(); mctx.arc(p.x * sx, p.y * sy, 2.2, 0, Math.PI * 2); mctx.fill(); }
+  for (const p of state.ponds) { const [mx, my] = toMap(p.x, p.y); mctx.beginPath(); mctx.arc(mx, my, 2.2, 0, Math.PI * 2); mctx.fill(); }
   mctx.fillStyle = '#8a5a3a';
-  for (const s of state.shelters) { mctx.beginPath(); mctx.arc(s.x * sx, s.y * sy, 2.8, 0, Math.PI * 2); mctx.fill(); }
+  for (const s of state.shelters) { const [mx, my] = toMap(s.x, s.y); mctx.beginPath(); mctx.arc(mx, my, 2.8, 0, Math.PI * 2); mctx.fill(); }
   mctx.fillStyle = '#ffb85c';
-  for (const f of state.campfires) { mctx.beginPath(); mctx.arc(f.x * sx, f.y * sy, 1.8, 0, Math.PI * 2); mctx.fill(); }
+  for (const f of state.campfires) { const [mx, my] = toMap(f.x, f.y); mctx.beginPath(); mctx.arc(mx, my, 1.8, 0, Math.PI * 2); mctx.fill(); }
   mctx.fillStyle = '#c0392b';
-  for (const w of state.wolves) { mctx.beginPath(); mctx.arc(w.x * sx, w.y * sy, 1.6, 0, Math.PI * 2); mctx.fill(); }
+  for (const w of state.wolves) { const [mx, my] = toMap(w.x, w.y); mctx.beginPath(); mctx.arc(mx, my, 1.6, 0, Math.PI * 2); mctx.fill(); }
 
   mctx.strokeStyle = 'rgba(203,216,195,0.45)';
   mctx.lineWidth = 1;
-  mctx.strokeRect(cam.x * sx, cam.y * sy, canvas.width * sx, canvas.height * sy);
+  const [rx, ry] = toMap(cam.x, cam.y);
+  mctx.strokeRect(rx, ry, viewW * scale, viewH * scale);
 
   mctx.fillStyle = '#ffe9c7';
   mctx.beginPath();
-  mctx.arc(state.player.x * sx, state.player.y * sy, 3, 0, Math.PI * 2);
+  mctx.arc(W / 2, H / 2, 3, 0, Math.PI * 2);
   mctx.fill();
   mctx.strokeStyle = '#ffe9c7';
   mctx.lineWidth = 1.4;
   mctx.beginPath();
-  mctx.moveTo(state.player.x * sx, state.player.y * sy);
-  mctx.lineTo(state.player.x * sx + state.player.dir.x * 9, state.player.y * sy + state.player.dir.y * 9);
+  mctx.moveTo(W / 2, H / 2);
+  mctx.lineTo(W / 2 + state.player.dir.x * 9, H / 2 + state.player.dir.y * 9);
   mctx.stroke();
 }
 
 function drawPlayer(cam) {
   const sx = state.player.x - cam.x;
-  const sy = state.player.y - cam.y;
-  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  const moving = Math.abs(state.player.dir.x) + Math.abs(state.player.dir.y) > 0 && state.keys && (state.keys['w'] || state.keys['a'] || state.keys['s'] || state.keys['d'] || state.keys['arrowup'] || state.keys['arrowdown'] || state.keys['arrowleft'] || state.keys['arrowright']);
+  const bob = moving ? Math.sin(state.elapsed * 10) * 1.6 : 0;
+  const sy = state.player.y - cam.y + bob;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.32)';
   ctx.beginPath();
-  ctx.ellipse(sx, sy + 14, 12, 5, 0, 0, Math.PI * 2);
+  ctx.ellipse(sx, state.player.y - cam.y + 15, 12, 5, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = '#7a5230';
+
+  if (state.player.hasBackpack) {
+    ctx.fillStyle = '#5a4530';
+    ctx.beginPath();
+    ctx.ellipse(sx - state.player.dir.y * 8, sy + 4 - state.player.dir.x * 2, 6, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const bodyG = ctx.createLinearGradient(sx - 9, 0, sx + 9, 0);
+  bodyG.addColorStop(0, '#5f3f22');
+  bodyG.addColorStop(0.5, '#8a5c34');
+  bodyG.addColorStop(1, '#5f3f22');
+  ctx.fillStyle = bodyG;
   ctx.beginPath();
   ctx.moveTo(sx - 9, sy + 14);
   ctx.lineTo(sx + 9, sy + 14);
   ctx.lineTo(sx, sy - 6);
   ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = '#e0b98c';
+
+  const headG = ctx.createRadialGradient(sx - 3, sy - 15, 1, sx, sy - 12, 9);
+  headG.addColorStop(0, '#f0cca0');
+  headG.addColorStop(1, '#cf9d6c');
+  ctx.fillStyle = headG;
   ctx.beginPath();
   ctx.arc(sx, sy - 12, 8, 0, Math.PI * 2);
   ctx.fill();
+
   if (state.player.hasSpear) {
     ctx.strokeStyle = '#c9a86a';
     ctx.lineWidth = 3;
@@ -70,7 +97,7 @@ function drawPlayer(cam) {
     ctx.moveTo(sx + state.player.dir.x * 4, sy + state.player.dir.y * 4);
     ctx.lineTo(sx + state.player.dir.x * 34, sy + state.player.dir.y * 34);
     ctx.stroke();
-    ctx.fillStyle = '#d8d8d0';
+    ctx.fillStyle = '#e4e4dc';
     ctx.beginPath();
     ctx.arc(sx + state.player.dir.x * 36, sy + state.player.dir.y * 36, 3, 0, Math.PI * 2);
     ctx.fill();
@@ -89,9 +116,13 @@ function resetGame() {
   generateWorld();
   updateEquipUI();
   updateHUD();
+  SoundFX.setAmbientActive(true);
 }
 
 function update(dt) {
+  // Suaviza el zoom hacia el valor objetivo (fijado por la rueda del mouse).
+  state.zoom += (state.targetZoom - state.zoom) * Math.min(1, dt * 8);
+
   state.elapsed += dt;
   if (state.elapsed >= state.dayCounter * DAY_LENGTH) {
     state.dayCounter++;
@@ -100,6 +131,10 @@ function update(dt) {
   }
 
   updatePlayer(dt);
+
+  const viewW = canvas.width / state.zoom;
+  const viewH = canvas.height / state.zoom;
+  updateChunks(viewW, viewH);
 
   if (state.player.hunger <= 0 || state.player.thirst <= 0) {
     state.player.health = clamp(state.player.health - 3.2 * dt, 0, 100);
@@ -126,26 +161,55 @@ function update(dt) {
 }
 
 function render() {
+  const zoom = state.zoom;
+  // El área visible del mundo se achica con zoom > 1, acercando la cámara al jugador.
+  const viewW = canvas.width / zoom;
+  const viewH = canvas.height / zoom;
   const cam = {
-    x: clamp(state.player.x - canvas.width / 2, 0, WORLD_W - canvas.width),
-    y: clamp(state.player.y - canvas.height / 2, 0, WORLD_H - canvas.height)
+    x: state.player.x - viewW / 2,
+    y: state.player.y - viewH / 2
   };
 
-  drawGround(ctx, canvas, cam);
-  drawGrassDecor(ctx, cam);
-  drawPonds(ctx, cam);
+  ctx.save();
+  ctx.scale(zoom, zoom);
+
+  drawGround(ctx, { width: viewW, height: viewH }, cam);
+  drawGrassDecor(ctx, cam, viewW, viewH);
+  drawPonds(ctx, cam, viewW, viewH);
+
+  // Se descarta lo que quedó fuera de pantalla ANTES de armar el array a ordenar
+  // (antes se armaba con TODO lo cargado en los chunks vecinos y se filtraba
+  // recién adentro de cada draw(), lo cual con el mapa infinito significaba
+  // ordenar miles de objetos innecesariamente en cada frame).
+  const margin = 220;
+  const left = cam.x - margin, right = cam.x + viewW + margin;
+  const top = cam.y - margin, bottom = cam.y + viewH + margin;
+  const inView = (o) => o.x >= left && o.x <= right && o.y >= top && o.y <= bottom;
 
   const drawables = [];
-  for (const t of state.trees) drawables.push({ y: t.y, draw: () => drawTree(t, cam, ctx) });
-  for (const r of state.rocks) drawables.push({ y: r.y, draw: () => drawRock(r, cam, ctx) });
-  for (const b of state.bushes) drawables.push({ y: b.y, draw: () => drawBush(b, cam, ctx) });
-  for (const f of state.campfires) drawables.push({ y: f.y, draw: () => drawCampfire(f, cam) });
-  for (const s of state.shelters) drawables.push({ y: s.y, draw: () => drawShelter(s, cam) });
-  for (const d of state.deer) drawables.push({ y: d.y, draw: () => drawDeer(d, cam, ctx) });
-  for (const w of state.wolves) drawables.push({ y: w.y, draw: () => drawWolf(w, cam, ctx) });
-  drawables.push({ y: state.player.y, draw: () => drawPlayer(cam) });
+  for (const t of state.trees) if (inView(t)) drawables.push({ y: t.y, type: 0, ref: t });
+  for (const r of state.rocks) if (inView(r)) drawables.push({ y: r.y, type: 1, ref: r });
+  for (const b of state.bushes) if (inView(b)) drawables.push({ y: b.y, type: 2, ref: b });
+  for (const f of state.campfires) if (inView(f)) drawables.push({ y: f.y, type: 3, ref: f });
+  for (const s of state.shelters) if (inView(s)) drawables.push({ y: s.y, type: 4, ref: s });
+  for (const d of state.deer) if (inView(d)) drawables.push({ y: d.y, type: 5, ref: d });
+  for (const w of state.wolves) if (inView(w)) drawables.push({ y: w.y, type: 6, ref: w });
+  drawables.push({ y: state.player.y, type: 7, ref: null });
   drawables.sort((a, b) => a.y - b.y);
-  for (const d of drawables) d.draw();
+  for (const d of drawables) {
+    switch (d.type) {
+      case 0: drawTree(d.ref, cam, ctx); break;
+      case 1: drawRock(d.ref, cam, ctx); break;
+      case 2: drawBush(d.ref, cam, ctx); break;
+      case 3: drawCampfire(d.ref, cam); break;
+      case 4: drawShelter(d.ref, cam); break;
+      case 5: drawDeer(d.ref, cam, ctx); break;
+      case 6: drawWolf(d.ref, cam, ctx); break;
+      case 7: drawPlayer(cam); break;
+    }
+  }
+
+  ctx.restore(); // el resto (oscuridad, flash, minimapa) se dibuja en espacio de pantalla real, sin escalar
 
   const phase = (state.elapsed % DAY_LENGTH) / DAY_LENGTH;
   let darkness = 0;
@@ -163,26 +227,30 @@ function render() {
     mctx.fillStyle = `rgba(4,8,10,${darkness})`;
     mctx.fillRect(0, 0, canvas.width, canvas.height);
     mctx.globalCompositeOperation = 'destination-out';
-    const px = state.player.x - cam.x;
-    const py = state.player.y - cam.y;
-    let rg = mctx.createRadialGradient(px, py, 10, px, py, 200);
+    // Posiciones y radios en espacio de pantalla real: hay que multiplicar por el zoom
+    // porque el mundo se dibujó escalado, pero esta máscara no.
+    const px = (state.player.x - cam.x) * zoom;
+    const py = (state.player.y - cam.y) * zoom;
+    const playerR = 200 * zoom;
+    let rg = mctx.createRadialGradient(px, py, 10 * zoom, px, py, playerR);
     rg.addColorStop(0, 'rgba(0,0,0,1)');
     rg.addColorStop(0.6, 'rgba(0,0,0,0.65)');
     rg.addColorStop(1, 'rgba(0,0,0,0)');
     mctx.fillStyle = rg;
     mctx.beginPath();
-    mctx.arc(px, py, 200, 0, Math.PI * 2);
+    mctx.arc(px, py, playerR, 0, Math.PI * 2);
     mctx.fill();
     for (const f of state.campfires) {
-      const fx = f.x - cam.x;
-      const fy = f.y - cam.y;
-      let fg = mctx.createRadialGradient(fx, fy, 10, fx, fy, 260);
+      const fx = (f.x - cam.x) * zoom;
+      const fy = (f.y - cam.y) * zoom;
+      const fireR = 260 * zoom;
+      let fg = mctx.createRadialGradient(fx, fy, 10 * zoom, fx, fy, fireR);
       fg.addColorStop(0, 'rgba(0,0,0,1)');
       fg.addColorStop(0.55, 'rgba(0,0,0,0.6)');
       fg.addColorStop(1, 'rgba(0,0,0,0)');
       mctx.fillStyle = fg;
       mctx.beginPath();
-      mctx.arc(fx, fy, 260, 0, Math.PI * 2);
+      mctx.arc(fx, fy, fireR, 0, Math.PI * 2);
       mctx.fill();
     }
     ctx.drawImage(mask, 0, 0);
@@ -193,7 +261,7 @@ function render() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
-  renderMinimap(cam);
+  renderMinimap(cam, viewW, viewH);
 }
 
 function loop(now) {
@@ -223,11 +291,39 @@ function bindControls() {
   window.addEventListener('keydown', e => {
     if (!state.running || state.gameOver) return;
     if (e.key === 'q' || e.key === 'Q') handleManualEat();
+    if (e.key === 'i' || e.key === 'I') toggleInventory();
     if (e.key === 'Escape') {
-      if (state.paused) closePause();
+      if (isInventoryOpen()) closeInventory();
+      else if (state.paused) closePause();
       else openPause();
     }
   });
+
+  // Rueda del mouse: acerca/aleja la cámara de forma suave (interpolada en update()).
+  canvas.addEventListener('wheel', e => {
+    if (!state.running || state.gameOver || state.paused) return;
+    e.preventDefault();
+    const factor = Math.exp(-e.deltaY * 0.0012);
+    state.targetZoom = clamp(state.targetZoom * factor, ZOOM_MIN, ZOOM_MAX);
+  }, { passive: false });
+
+  // Hotbar: cada slot dispara la misma acción que su tecla numérica.
+  const HOTBAR_ACTIONS = {
+    spear: tryCraftSpear,
+    campfire: tryPlaceCampfire,
+    axe: tryCraftAxe,
+    pickaxe: tryCraftPickaxe,
+    backpack: tryCraftBackpack,
+    shelter: tryPlaceShelter
+  };
+  document.querySelectorAll('#hotbar .hotSlot[data-action]').forEach(el => {
+    el.addEventListener('click', () => {
+      if (!state.running || state.gameOver || state.paused) return;
+      const action = HOTBAR_ACTIONS[el.dataset.action];
+      if (action) action();
+    });
+  });
+  document.getElementById('invToggleBtn').addEventListener('click', () => toggleInventory());
 }
 
 function bindUI() {
@@ -237,6 +333,7 @@ function bindUI() {
     document.getElementById('title').classList.add('hidden');
     document.getElementById('menuBtn').classList.remove('hidden');
     document.getElementById('minimapWrap').classList.remove('hidden');
+    document.getElementById('hotbar').classList.remove('hidden');
     resetGame();
     state.running = true;
     pushLog('El bosque te observa. Sobrevivé.');
@@ -246,6 +343,7 @@ function bindUI() {
     document.getElementById('gameOver').style.display = 'none';
     document.getElementById('menuBtn').classList.remove('hidden');
     document.getElementById('minimapWrap').classList.remove('hidden');
+    document.getElementById('hotbar').classList.remove('hidden');
     resetGame();
     state.running = true;
   });
@@ -254,14 +352,17 @@ function bindUI() {
   document.getElementById('pauseRestartBtn').addEventListener('click', () => {
     SoundFX.click();
     document.getElementById('pauseMenu').style.display = 'none';
+    document.getElementById('hotbar').classList.remove('hidden');
     state.paused = false;
     resetGame();
     state.running = true;
   });
   document.getElementById('pauseMainMenuBtn').addEventListener('click', () => { SoundFX.click(); goToMainMenu(); });
+  document.getElementById('settingsBtnTitle').addEventListener('click', () => openSettings('title'));
+  document.getElementById('settingsBtnPause').addEventListener('click', () => openSettings('pause'));
+  document.getElementById('settingsCloseBtn').addEventListener('click', () => closeSettings());
 
-  wireVolumeControls('volumeSliderTitle', 'muteToggleTitle');
-  wireVolumeControls('volumeSliderPause', 'muteTogglePause');
+  wireVolumeControls('volumeSlider', 'muteToggle');
 }
 
 function init() {

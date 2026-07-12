@@ -1,8 +1,16 @@
-export const WORLD_W = 3400;
-export const WORLD_H = 3400;
 export const DAY_LENGTH = 130;
 export const BASE_CAP = 30;
 export const BACKPACK_BONUS = 30;
+
+// Tamaño de cada "chunk" del mundo infinito (en unidades de mundo, como bloques de Minecraft
+// pero mucho más grandes ya que acá no hay grilla de tiles). El mundo se genera y descarga
+// en pedazos de este tamaño a medida que el jugador se mueve.
+export const CHUNK_SIZE = 700;
+
+// Límites del zoom de cámara (rueda del mouse). >1 acerca la vista, <1 la aleja.
+export const ZOOM_MIN = 0.8;
+export const ZOOM_MAX = 2.6;
+export const ZOOM_DEFAULT = 1.6;
 
 export const canvas = document.getElementById('game');
 export const ctx = canvas.getContext('2d');
@@ -15,6 +23,14 @@ export const state = {
   dayCounter: 1,
   lastTime: performance.now(),
   keys: {},
+  // Semilla del mundo actual: define de forma determinística qué genera cada chunk.
+  worldSeed: 0,
+  // Chunks actualmente cargados (Set de claves "cx,cy") y su contenido guardado
+  // (para que un chunk descargado, al volver a visitarlo, no se regenere de cero).
+  loadedChunks: new Set(),
+  chunkStore: {},
+  zoom: ZOOM_DEFAULT,
+  targetZoom: ZOOM_DEFAULT,
   trees: [],
   rocks: [],
   bushes: [],
@@ -25,8 +41,8 @@ export const state = {
   deer: [],
   grassDecor: [],
   player: {
-    x: WORLD_W / 2,
-    y: WORLD_H / 2,
+    x: 0,
+    y: 0,
     dir: { x: 0, y: 1 },
     speed: 165,
     sprintMult: 1.7,

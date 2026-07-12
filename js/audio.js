@@ -3,11 +3,13 @@ import { rand } from './config.js';
 const SoundFX = (function () {
   let actx = null;
   let master = null;
+  let ambientBus = null;
   let dayGain = null;
   let nightGain = null;
   let volume = 0.7;
   let muted = false;
   let ambientStarted = false;
+  let ambientActive = true;
   let currentDarkness = 0;
 
   function ensureCtx() {
@@ -16,6 +18,9 @@ const SoundFX = (function () {
     master = actx.createGain();
     master.gain.value = muted ? 0 : volume;
     master.connect(actx.destination);
+    ambientBus = actx.createGain();
+    ambientBus.gain.value = ambientActive ? 1 : 0;
+    ambientBus.connect(master);
   }
 
   function noiseBuffer(dur) {
@@ -63,7 +68,7 @@ const SoundFX = (function () {
     ambientStarted = true;
     dayGain = actx.createGain();
     dayGain.gain.value = 0.16;
-    dayGain.connect(master);
+    dayGain.connect(ambientBus);
     const daySrc = actx.createBufferSource();
     daySrc.buffer = noiseBuffer(2);
     daySrc.loop = true;
@@ -77,7 +82,7 @@ const SoundFX = (function () {
 
     nightGain = actx.createGain();
     nightGain.gain.value = 0;
-    nightGain.connect(master);
+    nightGain.connect(ambientBus);
     const nightSrc = actx.createBufferSource();
     nightSrc.buffer = noiseBuffer(2);
     nightSrc.loop = true;
@@ -89,7 +94,7 @@ const SoundFX = (function () {
     nightSrc.start();
 
     setInterval(() => {
-      if (!actx) return;
+      if (!actx || !ambientActive) return;
       if (currentDarkness < 0.3 && Math.random() < 0.5) tone(rand(1500, 2300), 0.12, 'sine', 0.05 * (1 - currentDarkness));
       if (currentDarkness > 0.5 && Math.random() < 0.3) tone(rand(170, 260), 0.5, 'sine', 0.06 * currentDarkness, rand(140, 190));
     }, 1500);
@@ -103,6 +108,10 @@ const SoundFX = (function () {
     },
     setVolume(v) { volume = v; if (master) master.gain.value = muted ? 0 : v; },
     setMuted(m) { muted = m; if (master) master.gain.value = muted ? 0 : volume; },
+    setAmbientActive(active) {
+      ambientActive = active;
+      if (ambientBus) ambientBus.gain.setTargetAtTime(active ? 1 : 0, actx.currentTime, 0.25);
+    },
     setDarkness(d) {
       currentDarkness = d;
       if (dayGain) dayGain.gain.setTargetAtTime(0.16 * (1 - d), actx.currentTime, 0.8);

@@ -1,6 +1,7 @@
 import { state, capFor, invTotal, clamp } from './config.js';
 import { SoundFX } from './audio.js';
 import { pushLog, showHint } from './ui.js';
+import { removeEntity } from './world.js';
 
 export function collectTreeResource(t) {
   if (t.hits <= 0) return;
@@ -16,7 +17,7 @@ export function collectTreeResource(t) {
   SoundFX.chop();
   pushLog(`Talaste madera (+${gained})`);
   if (t.hits <= 0) {
-    state.trees.splice(state.trees.indexOf(t), 1);
+    removeEntity('trees', t);
   }
 }
 
@@ -34,7 +35,7 @@ export function collectRockResource(r) {
   SoundFX.mine();
   pushLog(`Picaste piedra (+${gained})`);
   if (r.hits <= 0) {
-    state.rocks.splice(state.rocks.indexOf(r), 1);
+    removeEntity('rocks', r);
   }
 }
 

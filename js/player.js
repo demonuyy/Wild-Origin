@@ -1,11 +1,12 @@
-import { state, clamp, dist, WORLD_W, WORLD_H, DAY_LENGTH, invTotal, capFor } from './config.js';
+import { state, clamp, dist, DAY_LENGTH, invTotal, capFor } from './config.js';
 import { pushLog, showHint, updateEquipUI, updateHUD } from './ui.js';
 import { SoundFX } from './audio.js';
 import { collectTreeResource, collectRockResource, collectBushResource, consumeBerry } from './inventory.js';
+import { removeEntity } from './world.js';
 
 export function resetPlayer() {
-  state.player.x = WORLD_W / 2;
-  state.player.y = WORLD_H / 2;
+  state.player.x = 0;
+  state.player.y = 0;
   state.player.health = 100;
   state.player.hunger = 100;
   state.player.thirst = 100;
@@ -115,7 +116,7 @@ export function tryAttack() {
       hitSomething = true;
       SoundFX.wolfHit();
       if (w.health <= 0) {
-        state.wolves.splice(state.wolves.indexOf(w), 1);
+        removeEntity('wolves', w);
         SoundFX.wolfDeath();
         pushLog('El lobo cayó');
       }
@@ -142,8 +143,8 @@ export function updatePlayer(dt) {
     player.dir.y = my;
     const sprint = state.keys['shift'] && player.stamina > 2;
     const spd = player.speed * (sprint ? player.sprintMult : 1);
-    player.x = clamp(player.x + mx * spd * dt, 20, WORLD_W - 20);
-    player.y = clamp(player.y + my * spd * dt, 20, WORLD_H - 20);
+    player.x += mx * spd * dt;
+    player.y += my * spd * dt;
     if (sprint) player.stamina = clamp(player.stamina - 18 * dt, 0, 100);
   }
   if (!state.keys['shift'] || !moved) {
