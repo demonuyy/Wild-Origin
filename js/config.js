@@ -32,6 +32,10 @@ export const state = {
   // (para que un chunk descargado, al volver a visitarlo, no se regenere de cero).
   loadedChunks: new Set(),
   chunkStore: {},
+  // Tipos de objeto ('tree', 'rock', 'bush', etc.) con los que el jugador ya
+  // interactuó al menos una vez en esta partida. Se usa para dejar de mostrar
+  // el cartel contextual ("Talar (E)") una vez que ya se aprendió la mecánica.
+  discoveredActions: new Set(),
   zoom: ZOOM_DEFAULT,
   targetZoom: ZOOM_DEFAULT,
   trees: [],

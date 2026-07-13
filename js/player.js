@@ -1,5 +1,5 @@
-import { state, clamp, dist, DAY_LENGTH, invTotal, capFor } from './config.js';
-import { pushLog, showHint, updateEquipUI, updateHUD } from './ui.js';
+import { state, clamp, dist, DAY_LENGTH, invTotal, capFor, isNightPhase } from './config.js';
+import { pushLog, showHint, updateEquipUI, updateHUD, showInteractPrompt, hideInteractPrompt, isInventoryOpen } from './ui.js';
 import { SoundFX } from './audio.js';
 import { collectTreeResource, collectRockResource, collectBushResource, consumeBerry, collectStick, collectStone } from './inventory.js';
 import { removeEntity } from './world.js';
@@ -25,11 +25,27 @@ export function resetPlayer() {
   state.player.attackRange = 34;
   state.player.attackCooldown = 0;
   state.player.hitFlash = 0;
+  state.discoveredActions = new Set();
   updateEquipUI();
   updateHUD();
 }
 
-export function tryInteract() {
+// Nombre de la acción mostrada en el cartel contextual, por tipo de objeto.
+const INTERACT_LABELS = {
+  tree: 'Talar',
+  rock: 'Minar',
+  bush: 'Recolectar',
+  stick: 'Recoger',
+  stone: 'Recoger',
+  shelter: 'Dormir',
+  pond: 'Beber'
+};
+
+// Busca el objeto interactuable más cercano al jugador (árbol, roca, arbusto,
+// palo, piedra suelta, refugio o laguna). La usan tanto tryInteract() (al
+// apretar E) como updateInteractionPrompt() (para decidir si mostrar el
+// cartel), así la distancia de interacción vive en un solo lugar.
+function findNearestInteractable() {
   let best = null;
   let bestD = 60;
   for (const t of state.trees) {
@@ -83,11 +99,36 @@ export function tryInteract() {
       break;
     }
   }
+  return best;
+}
+
+// Se llama una vez por frame. Muestra "Talar (E)" / "Minar (E)" / etc. solo
+// mientras el jugador está cerca de un tipo de objeto con el que todavía no
+// interactuó nunca en esta partida; una vez que interactúa una vez con ese
+// tipo, no vuelve a aparecer (ver tryInteract, que marca el tipo como
+// descubierto).
+export function updateInteractionPrompt() {
+  if (isInventoryOpen()) {
+    hideInteractPrompt();
+    return;
+  }
+  const best = findNearestInteractable();
+  if (best && !state.discoveredActions.has(best.type)) {
+    showInteractPrompt(`${INTERACT_LABELS[best.type]} <span class="promptKey">E</span>`);
+  } else {
+    hideInteractPrompt();
+  }
+}
+
+export function tryInteract() {
+  const best = findNearestInteractable();
 
   if (!best) {
     showHint('Nada cerca para recolectar');
     return;
   }
+
+  state.discoveredActions.add(best.type);
 
   if (best.type === 'tree') {
     collectTreeResource(best.obj);
@@ -189,10 +230,6 @@ export function updatePlayer(dt) {
   }
   if (player.attackCooldown > 0) player.attackCooldown -= dt;
   if (player.hitFlash > 0) player.hitFlash -= dt;
-}
-
-function isNightPhase(phase) {
-  return phase > 0.58 && phase < 0.97;
 }
 
 export function handleManualEat() {

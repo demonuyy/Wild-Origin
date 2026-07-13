@@ -26,9 +26,9 @@
 
 ✅ Menú de crafteo (hotbar con teclas 1-6 y clic)
 
-✅ Guardar partida (autoguardado en localStorage cada frame)
+✅ Guardar partida (autoguardado throttleado cada 8s + botón manual "Guardar partida" en el menú de pausa)
 
-⬜ Cargar partida (la función `loadGame()` ya existe en `save.js` pero todavía no se llama desde la UI/inicio)
+✅ Cargar partida (botón "Continuar partida" en el título, visible solo si hay un guardado)
 
 ✅ Inventario mejorado (panel dedicado con capacidad máxima, tecla "I")
 

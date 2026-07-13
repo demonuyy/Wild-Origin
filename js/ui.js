@@ -38,6 +38,26 @@ export function showHint(text) {
   hintTimeout = setTimeout(() => el.classList.remove('show'), 1400);
 }
 
+// Cartel contextual persistente ("Talar (E)"), a diferencia de showHint() que
+// es un toast que se autooculta: este se muestra mientras el jugador esté
+// cerca y se oculta apenas deja de estarlo (ver updateInteractionPrompt en
+// player.js).
+let lastPromptText = null;
+export function showInteractPrompt(text) {
+  const el = document.getElementById('interactPrompt');
+  if (lastPromptText !== text) {
+    el.innerHTML = text;
+    lastPromptText = text;
+  }
+  el.classList.add('show');
+}
+
+export function hideInteractPrompt() {
+  const el = document.getElementById('interactPrompt');
+  el.classList.remove('show');
+  lastPromptText = null;
+}
+
 export function updateHotbar() {
   const slots = document.querySelectorAll('#hotbar .hotSlot[data-action]');
   slots.forEach(el => {
@@ -187,6 +207,7 @@ export function endGame() {
   state.running = false;
   SoundFX.setAmbientActive(false);
   SoundFX.gameOverSting();
+  hideInteractPrompt();
   document.getElementById('menuBtn').classList.add('hidden');
   document.getElementById('minimapWrap').classList.add('hidden');
   document.getElementById('hotbar').classList.add('hidden');
@@ -200,6 +221,7 @@ export function openPause() {
   state.paused = true;
   SoundFX.setAmbientActive(false);
   closeInventory();
+  hideInteractPrompt();
   document.getElementById('pauseMenu').style.display = 'block';
 }
 

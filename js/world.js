@@ -49,6 +49,15 @@ const NOISE_SCALE = 0.0035;
 
 function chunkKeyOf(cx, cy) { return cx + ',' + cy; }
 
+// Siembra las funciones de ruido a partir de state.worldSeed. La usan tanto
+// generateWorld() (mundo nuevo) como restoreChunksFromSave() (mundo cargado
+// desde una partida guardada, que reutiliza la misma semilla).
+function seedNoiseFromWorld() {
+  forestNoise = makeNoise2D(state.worldSeed);
+  rockNoise = makeNoise2D(state.worldSeed + 4321.7);
+  bushNoise = makeNoise2D(state.worldSeed + 8765.3);
+}
+
 // Reinicia el mundo: nueva semilla global. A partir de acá todo se genera
 // "on demand" chunk por chunk según updateChunks().
 export function generateWorld() {
@@ -66,9 +75,34 @@ export function generateWorld() {
   state.chunkStore = {};
   state.loadedChunks = new Set();
   state.worldSeed = Math.floor(Math.random() * 1e9);
-  forestNoise = makeNoise2D(state.worldSeed);
-  rockNoise = makeNoise2D(state.worldSeed + 4321.7);
-  bushNoise = makeNoise2D(state.worldSeed + 8765.3);
+  seedNoiseFromWorld();
+}
+
+// Se llama después de restaurar una partida guardada (state.trees, state.wolves,
+// etc. ya vienen poblados desde save.js). Reconstruye chunkStore/loadedChunks
+// agrupando esas entidades por su chunkKey, para que updateChunks() pueda
+// seguir cargando/descargando chunks sin duplicar ni perder nada, y siembra
+// el ruido con la misma semilla guardada para que los chunks todavía no
+// visitados generen contenido consistente con el resto del mundo.
+export function restoreChunksFromSave() {
+  seedNoiseFromWorld();
+  state.chunkStore = {};
+  const lists = {
+    trees: state.trees, rocks: state.rocks, bushes: state.bushes, ponds: state.ponds,
+    wolves: state.wolves, deer: state.deer, grassDecor: state.grassDecor,
+    sticks: state.sticks, stones: state.stones
+  };
+  for (const [name, arr] of Object.entries(lists)) {
+    for (const obj of arr) {
+      const key = obj.chunkKey;
+      if (!key) continue;
+      if (!state.chunkStore[key]) {
+        state.chunkStore[key] = { trees: [], rocks: [], bushes: [], ponds: [], wolves: [], deer: [], grassDecor: [], sticks: [], stones: [] };
+      }
+      state.chunkStore[key][name].push(obj);
+    }
+  }
+  state.loadedChunks = new Set(Object.keys(state.chunkStore));
 }
 
 function generateChunk(cx, cy) {

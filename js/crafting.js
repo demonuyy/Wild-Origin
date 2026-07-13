@@ -18,7 +18,7 @@ export function tryCraftSpear() {
     pushLog('Fabricaste una lanza');
   } else {
     SoundFX.craftFail();
-    showHint('<b>Lanza</b>Necesitás 4 madera y 2 piedra');
+    showHint('<b>Lanza:</b> Necesitás 4 madera y 2 piedra');
   }
 }
 
@@ -30,7 +30,7 @@ export function tryPlaceCampfire() {
     pushLog('Encendiste una fogata');
   } else {
     SoundFX.craftFail();
-    showHint('<b>Fogata</b>Necesitás 6 madera');
+    showHint('<b>Fogata:</b> Necesitás 6 madera');
   }
 }
 
@@ -50,7 +50,7 @@ export function tryCraftAxe() {
     pushLog('Fabricaste un hacha: ya la tenés en la mano, podés talar árboles');
   } else {
     SoundFX.craftFail();
-    showHint('<b>Hacha</b>Necesitás 5 madera y 3 piedra');
+    showHint('<b>Hacha:</b> Necesitás 5 madera y 3 piedra');
   }
 }
 
@@ -70,7 +70,7 @@ export function tryCraftPickaxe() {
     pushLog('Fabricaste un pico: ya lo tenés en la mano, podés minar rocas');
   } else {
     SoundFX.craftFail();
-    showHint('<b>Pico</b>Necesitás 5 madera y 3 piedra');
+    showHint('<b>Pico:</b> Necesitás 5 madera y 3 piedra');
   }
 }
 
@@ -107,7 +107,7 @@ export function tryCraftBackpack() {
     pushLog(`Fabricaste una mochila: capacidad +${BACKPACK_BONUS}`);
   } else {
     SoundFX.craftFail();
-    showHint('<b>Mochila</b>Necesitás 8 madera y 4 piedra');
+    showHint('<b>Mochila:</b> Necesitás 8 madera y 4 piedra');
   }
 }
 
@@ -120,6 +120,6 @@ export function tryPlaceShelter() {
     pushLog('Construiste un refugio: zona segura. "E" para dormir');
   } else {
     SoundFX.craftFail();
-    showHint('<b>Refugio</b>Necesitás 15 madera y 8 piedra');
+    showHint('<b>Refugio:</b> Necesitás 15 madera y 8 piedra');
   }
 }

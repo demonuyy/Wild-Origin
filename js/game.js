@@ -1,13 +1,13 @@
 import { state, ctx, canvas, DAY_LENGTH, ZOOM_MIN, ZOOM_MAX, resize, rand, dist, clamp, isNightPhase } from './config.js';
 import { SoundFX } from './audio.js';
-import { generateWorld, updateChunks, drawGround, drawGrassDecor, drawPonds, drawTree, drawRock, drawBush, drawStick, drawStone } from './world.js';
+import { generateWorld, updateChunks, restoreChunksFromSave, drawGround, drawGrassDecor, drawPonds, drawTree, drawRock, drawBush, drawStick, drawStone } from './world.js';
 import { updateDeer, drawDeer } from './animals.js';
 import { updateWolves, drawWolf } from './enemies.js';
-import { resetPlayer, tryInteract, tryAttack, updatePlayer, handleManualEat } from './player.js';
+import { resetPlayer, tryInteract, tryAttack, updatePlayer, updateInteractionPrompt, handleManualEat } from './player.js';
 import { tryCraftSpear, tryPlaceCampfire, tryCraftAxe, tryCraftPickaxe, tryCraftBackpack, tryPlaceShelter, tryEquipTool } from './crafting.js';
 import { drawCampfire, drawShelter } from './building.js';
 import { pushLog, showHint, updateEquipUI, updateHUD, endGame, openPause, closePause, goToMainMenu, wireVolumeControls, toggleInventory, closeInventory, isInventoryOpen, openSettings, closeSettings } from './ui.js';
-import { saveGame } from './save.js';
+import { saveGame, loadGame, hasSavedGame, tickAutosave, resetAutosaveTimer } from './save.js';
 
 // El minimapa es infinito como el mundo: no hay un WORLD_W/H para escalar,
 // así que se centra siempre en el jugador y muestra una ventana fija a su alrededor.
@@ -142,7 +142,29 @@ function resetGame() {
   generateWorld();
   updateEquipUI();
   updateHUD();
+  resetAutosaveTimer();
   SoundFX.setAmbientActive(true);
+}
+
+// Restaura la última partida guardada en localStorage. Si no hay ninguna (o
+// está corrupta), cae de vuelta a una partida nueva.
+function continueGame() {
+  state.gameOver = false;
+  const ok = loadGame();
+  if (!ok) {
+    resetGame();
+    return;
+  }
+  restoreChunksFromSave();
+  updateEquipUI();
+  updateHUD();
+  resetAutosaveTimer();
+  SoundFX.setAmbientActive(true);
+}
+
+function refreshContinueButton() {
+  const btn = document.getElementById('continueBtn');
+  if (btn) btn.classList.toggle('hidden', !hasSavedGame());
 }
 
 function update(dt) {
@@ -157,6 +179,7 @@ function update(dt) {
   }
 
   updatePlayer(dt);
+  updateInteractionPrompt();
 
   const viewW = canvas.width / state.zoom;
   const viewH = canvas.height / state.zoom;
@@ -183,7 +206,7 @@ function update(dt) {
 
   if (state.player.health <= 0) endGame();
   updateHUD();
-  saveGame();
+  tickAutosave(dt);
 }
 
 function render() {
@@ -391,6 +414,23 @@ function bindUI() {
     state.running = true;
     pushLog('El bosque te observa. Sobrevivé.');
   });
+  document.getElementById('continueBtn').addEventListener('click', () => {
+    SoundFX.init();
+    SoundFX.click();
+    document.getElementById('title').classList.add('hidden');
+    document.getElementById('menuBtn').classList.remove('hidden');
+    document.getElementById('minimapWrap').classList.remove('hidden');
+    document.getElementById('hotbar').classList.remove('hidden');
+    continueGame();
+    state.running = true;
+    pushLog('Partida cargada');
+  });
+  document.getElementById('saveBtn').addEventListener('click', () => {
+    SoundFX.click();
+    saveGame();
+    pushLog('Partida guardada');
+    showHint('Partida guardada ✓');
+  });
   document.getElementById('restartBtn').addEventListener('click', () => {
     SoundFX.click();
     document.getElementById('gameOver').style.display = 'none';
@@ -410,7 +450,7 @@ function bindUI() {
     resetGame();
     state.running = true;
   });
-  document.getElementById('pauseMainMenuBtn').addEventListener('click', () => { SoundFX.click(); goToMainMenu(); });
+  document.getElementById('pauseMainMenuBtn').addEventListener('click', () => { SoundFX.click(); goToMainMenu(); refreshContinueButton(); });
   document.getElementById('settingsBtnTitle').addEventListener('click', () => openSettings('title'));
   document.getElementById('settingsBtnPause').addEventListener('click', () => openSettings('pause'));
   document.getElementById('settingsCloseBtn').addEventListener('click', () => closeSettings());
@@ -426,6 +466,7 @@ function init() {
   generateWorld();
   updateEquipUI();
   updateHUD();
+  refreshContinueButton();
   requestAnimationFrame(loop);
 }
 
