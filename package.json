@@ -1,0 +1,9 @@
+{
+  "name": "wild-origin",
+  "private": true,
+  "type": "module",
+  "description": "Wild Origin - survival 2D en HTML/CSS/JS puro, sin build step para jugar (abrir index.html). El campo \"type\": \"module\" y el script de test son solo para poder correr los tests unitarios con Node.",
+  "scripts": {
+    "test": "node --test \"tests/*.test.js\""
+  }
+}

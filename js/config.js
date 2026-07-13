@@ -15,8 +15,12 @@ export const ZOOM_MIN = 0.8;
 export const ZOOM_MAX = 2.6;
 export const ZOOM_DEFAULT = 1.6;
 
-export const canvas = document.getElementById('game');
-export const ctx = canvas.getContext('2d');
+// Guardado con `typeof document !== 'undefined'` para que este módulo se
+// pueda importar también desde Node (tests unitarios de crafting/inventory,
+// que no tocan el canvas) sin necesitar un navegador real. En el navegador
+// el comportamiento es exactamente el mismo de siempre.
+export const canvas = typeof document !== 'undefined' ? document.getElementById('game') : null;
+export const ctx = canvas ? canvas.getContext('2d') : null;
 
 export const state = {
   running: false,
@@ -109,5 +113,7 @@ export function isNightPhase(phase) {
   return phase > 0.58 && phase < 0.97;
 }
 
-window.addEventListener('resize', resize);
-resize();
+if (typeof window !== 'undefined' && canvas) {
+  window.addEventListener('resize', resize);
+  resize();
+}

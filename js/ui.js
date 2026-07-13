@@ -1,17 +1,21 @@
 import { state, clamp, DAY_LENGTH, invTotal, capFor, STACK_SIZE } from './config.js';
 import { SoundFX } from './audio.js';
+import { RECIPES } from './recipes.js';
 
 let hintTimeout = null;
 
 // Costo/estado de cada acción de la hotbar, usado solo para pintar la UI
-// (la validación real de recursos sigue viviendo en crafting.js).
+// (la validación real de recursos sigue viviendo en crafting.js). Los
+// números de costo salen de recipes.js: acá solo se agrega la metadata que
+// es específica de esta pantalla (qué flag de state.player indica "ya lo
+// tengo" y, para hacha/pico, qué valor de equippedTool corresponde).
 const HOTBAR_CONFIG = {
-  spear: { wood: 4, stone: 2, ownedKey: 'hasSpear' },
-  campfire: { wood: 6, stone: 0, ownedKey: null },
-  axe: { wood: 5, stone: 3, ownedKey: 'hasAxe', equipKey: 'axe' },
-  pickaxe: { wood: 5, stone: 3, ownedKey: 'hasPickaxe', equipKey: 'pickaxe' },
-  backpack: { wood: 8, stone: 4, ownedKey: 'hasBackpack' },
-  shelter: { wood: 15, stone: 8, ownedKey: null }
+  spear: { ...RECIPES.spear.cost, ownedKey: 'hasSpear' },
+  campfire: { ...RECIPES.campfire.cost, ownedKey: null },
+  axe: { ...RECIPES.axe.cost, ownedKey: 'hasAxe', equipKey: 'axe' },
+  pickaxe: { ...RECIPES.pickaxe.cost, ownedKey: 'hasPickaxe', equipKey: 'pickaxe' },
+  backpack: { ...RECIPES.backpack.cost, ownedKey: 'hasBackpack' },
+  shelter: { ...RECIPES.shelter.cost, ownedKey: null }
 };
 
 export function pushLog(msg) {

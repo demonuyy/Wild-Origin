@@ -1,15 +1,15 @@
 import { state, BACKPACK_BONUS } from './config.js';
 import { SoundFX } from './audio.js';
 import { pushLog, showHint, updateEquipUI } from './ui.js';
+import { RECIPES, canAfford, payCost, costHint } from './recipes.js';
 
 export function tryCraftSpear() {
   if (state.player.hasSpear) {
     showHint('Ya tenés una lanza');
     return;
   }
-  if (state.player.wood >= 4 && state.player.stone >= 2) {
-    state.player.wood -= 4;
-    state.player.stone -= 2;
+  if (canAfford(state.player, RECIPES.spear.cost)) {
+    payCost(state.player, RECIPES.spear.cost);
     state.player.hasSpear = true;
     state.player.attackDamage = 26;
     state.player.attackRange = 46;
@@ -18,19 +18,19 @@ export function tryCraftSpear() {
     pushLog('Fabricaste una lanza');
   } else {
     SoundFX.craftFail();
-    showHint('<b>Lanza:</b> Necesitás 4 madera y 2 piedra');
+    showHint(costHint('spear'));
   }
 }
 
 export function tryPlaceCampfire() {
-  if (state.player.wood >= 6) {
-    state.player.wood -= 6;
+  if (canAfford(state.player, RECIPES.campfire.cost)) {
+    payCost(state.player, RECIPES.campfire.cost);
     state.campfires.push({ x: state.player.x, y: state.player.y, life: 220, pulse: 0 });
     SoundFX.craftOk();
     pushLog('Encendiste una fogata');
   } else {
     SoundFX.craftFail();
-    showHint('<b>Fogata:</b> Necesitás 6 madera');
+    showHint(costHint('campfire'));
   }
 }
 
@@ -39,9 +39,8 @@ export function tryCraftAxe() {
     tryEquipTool('axe');
     return;
   }
-  if (state.player.wood >= 5 && state.player.stone >= 3) {
-    state.player.wood -= 5;
-    state.player.stone -= 3;
+  if (canAfford(state.player, RECIPES.axe.cost)) {
+    payCost(state.player, RECIPES.axe.cost);
     state.player.hasAxe = true;
     // Recién fabricada, queda directamente en la mano.
     state.player.equippedTool = 'axe';
@@ -50,7 +49,7 @@ export function tryCraftAxe() {
     pushLog('Fabricaste un hacha: ya la tenés en la mano, podés talar árboles');
   } else {
     SoundFX.craftFail();
-    showHint('<b>Hacha:</b> Necesitás 5 madera y 3 piedra');
+    showHint(costHint('axe'));
   }
 }
 
@@ -59,9 +58,8 @@ export function tryCraftPickaxe() {
     tryEquipTool('pickaxe');
     return;
   }
-  if (state.player.wood >= 5 && state.player.stone >= 3) {
-    state.player.wood -= 5;
-    state.player.stone -= 3;
+  if (canAfford(state.player, RECIPES.pickaxe.cost)) {
+    payCost(state.player, RECIPES.pickaxe.cost);
     state.player.hasPickaxe = true;
     // Recién fabricado, queda directamente en la mano.
     state.player.equippedTool = 'pickaxe';
@@ -70,7 +68,7 @@ export function tryCraftPickaxe() {
     pushLog('Fabricaste un pico: ya lo tenés en la mano, podés minar rocas');
   } else {
     SoundFX.craftFail();
-    showHint('<b>Pico:</b> Necesitás 5 madera y 3 piedra');
+    showHint(costHint('pickaxe'));
   }
 }
 
@@ -98,28 +96,26 @@ export function tryCraftBackpack() {
     showHint('Ya tenés una mochila');
     return;
   }
-  if (state.player.wood >= 8 && state.player.stone >= 4) {
-    state.player.wood -= 8;
-    state.player.stone -= 4;
+  if (canAfford(state.player, RECIPES.backpack.cost)) {
+    payCost(state.player, RECIPES.backpack.cost);
     state.player.hasBackpack = true;
     SoundFX.craftOk();
     updateEquipUI();
     pushLog(`Fabricaste una mochila: capacidad +${BACKPACK_BONUS}`);
   } else {
     SoundFX.craftFail();
-    showHint('<b>Mochila:</b> Necesitás 8 madera y 4 piedra');
+    showHint(costHint('backpack'));
   }
 }
 
 export function tryPlaceShelter() {
-  if (state.player.wood >= 15 && state.player.stone >= 8) {
-    state.player.wood -= 15;
-    state.player.stone -= 8;
+  if (canAfford(state.player, RECIPES.shelter.cost)) {
+    payCost(state.player, RECIPES.shelter.cost);
     state.shelters.push({ x: state.player.x, y: state.player.y });
     SoundFX.craftOk();
     pushLog('Construiste un refugio: zona segura. "E" para dormir');
   } else {
     SoundFX.craftFail();
-    showHint('<b>Refugio:</b> Necesitás 15 madera y 8 piedra');
+    showHint(costHint('shelter'));
   }
 }
