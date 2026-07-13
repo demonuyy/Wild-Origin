@@ -71,7 +71,7 @@ export function collectStick(s) {
     return;
   }
   state.player.wood += 1;
-  SoundFX.pickup();
+  SoundFX.pickup('rustle');
   pushLog('Recogiste un palo (+1)');
   removeEntity('sticks', s);
 }
@@ -83,7 +83,7 @@ export function collectStone(s) {
     return;
   }
   state.player.stone += 1;
-  SoundFX.pickup();
+  SoundFX.pickup('rock');
   pushLog('Recogiste una piedra (+1)');
   removeEntity('stones', s);
 }

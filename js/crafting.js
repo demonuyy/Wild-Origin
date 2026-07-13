@@ -82,12 +82,12 @@ export function tryEquipTool(tool) {
   if (!owned) return;
   if (state.player.equippedTool === tool) {
     state.player.equippedTool = null;
-    SoundFX.click();
+    SoundFX.equipClank();
     updateEquipUI();
     pushLog('Guardaste la herramienta');
   } else {
     state.player.equippedTool = tool;
-    SoundFX.click();
+    SoundFX.equipClank();
     updateEquipUI();
     pushLog(tool === 'axe' ? 'Hacha en mano' : 'Pico en mano');
   }

@@ -170,12 +170,16 @@ export function toggleInventory(force) {
   el.classList.toggle('show', show);
   if (show) {
     updateInventoryPanel();
-    SoundFX.click();
+    SoundFX.bagOpen();
+  } else {
+    SoundFX.bagClose();
   }
 }
 
 export function closeInventory() {
-  document.getElementById('invPanel').classList.remove('show');
+  const el = document.getElementById('invPanel');
+  if (el.classList.contains('show')) SoundFX.bagClose();
+  el.classList.remove('show');
 }
 
 // Mantiene el nombre histórico (ya se llama desde crafting.js/player.js tras
@@ -206,6 +210,7 @@ export function endGame() {
   state.gameOver = true;
   state.running = false;
   SoundFX.setAmbientActive(false);
+  SoundFX.playerDeath();
   SoundFX.gameOverSting();
   hideInteractPrompt();
   document.getElementById('menuBtn').classList.add('hidden');

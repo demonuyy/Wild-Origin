@@ -3,6 +3,7 @@ import { pushLog, showHint, updateEquipUI, updateHUD, showInteractPrompt, hideIn
 import { SoundFX } from './audio.js';
 import { collectTreeResource, collectRockResource, collectBushResource, consumeBerry, collectStick, collectStone } from './inventory.js';
 import { removeEntity } from './world.js';
+import { hitDeer } from './animals.js';
 
 let footstepTimer = 0;
 
@@ -177,12 +178,18 @@ export function tryAttack() {
       w.knockX = w.x - state.player.x;
       w.knockY = w.y - state.player.y;
       hitSomething = true;
-      SoundFX.wolfHit();
+      SoundFX.wolfHit(w.x, w.y);
       if (w.health <= 0) {
         removeEntity('wolves', w);
-        SoundFX.wolfDeath();
+        SoundFX.wolfDeath(w.x, w.y);
         pushLog('El lobo cayó');
       }
+    }
+  }
+  for (const d of state.deer) {
+    if (dist(state.player.x, state.player.y, d.x, d.y) < range) {
+      hitDeer(d, state.player.attackDamage);
+      hitSomething = true;
     }
   }
   if (hitSomething) pushLog('¡Golpe certero!');

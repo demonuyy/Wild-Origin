@@ -45,7 +45,7 @@ Estado:
 - Minimapa
 - Menú de pausa y panel de ajustes (volumen general, de efectos y de ambiente por separado)
 - Sistema de audio con samples reales (pasos, hachazos, picazos, comer, beber, ambiente día/noche, pájaros, viento)
-- Guardado automático de la partida en el navegador (localStorage). Cargar una partida guardada todavía no está conectado a la interfaz.
+- Guardado automático de la partida en el navegador (localStorage), con guardado manual desde el menú de pausa y botón "Continuar partida" en el título para cargarla.
 
 ## Tecnologías
 

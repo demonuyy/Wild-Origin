@@ -1,4 +1,4 @@
-import { rand } from './config.js';
+import { rand, state, dist } from './config.js';
 
 // Rutas de los assets de audio reales (assets/audio/...). Cada categoría es
 // una lista para poder elegir una al azar y que no suene siempre igual.
@@ -10,10 +10,33 @@ const SAMPLE_FILES = {
   drink: ['player/drink_1.wav', 'player/drink_2.wav', 'player/drink_3.wav'],
   footstepGrass: ['player/footstep_grass_000.ogg', 'player/footstep_grass_001.ogg', 'player/footstep_grass_002.ogg', 'player/footstep_grass_003.ogg', 'player/footstep_grass_004.ogg'],
   swish: ['player/swish-1.wav', 'player/swish-2.wav', 'player/swish-3.wav', 'player/swish-4.wav', 'player/swish-5.wav'],
+  playerHurt: ['player/player_hurt_1.wav', 'player/player_hurt_2.wav', 'player/player_hurt_3.wav', 'player/player_hurt_4.wav'],
+  playerDead: ['player/player_dead.wav'],
   birdsLoop: ['ambient/birds_1.wav'],
   birdChirp: ['ambient/bird_2.wav'],
   crow: ['ambient/crow_caw.wav'],
-  windLoop: ['ambient/wind_1.mp3']
+  windLoop: ['ambient/wind_1.mp3'],
+  // Fauna: antes solo se usaban tonos sintetizados para lobos y nada para
+  // ciervos. Ahora usamos los samples reales de assets/audio/animals/.
+  wolfGrowl: ['animals/wolf_growl_1.wav'],
+  wolfAttack: ['animals/wolf_atack_1.wav', 'animals/wolf_atack_2.wav', 'animals/wolf_atack_3.wav'],
+  wolfHurt: ['animals/wolf_hurt_1.wav', 'animals/wolf_hurt_2.wav'],
+  wolfDead: ['animals/wolf_dead_1.wav', 'animals/wolf_dead_2.wav'],
+  wolfHowl: ['animals/wolf_howl_1.wav', 'animals/wolf_howl_2.wav', 'animals/wolf_howl_3.wav'],
+  deerGrunt: ['animals/deer_grunt.wav'],
+  deerSnort: ['animals/deer_snort.wav'],
+  deerHurt: ['animals/deer_hurt_1.wav', 'animals/deer_hurt_2.wav', 'animals/deer_hurt_3.wav'],
+  deerDead: ['animals/deer_dead _1.wav'],
+  footstepAnimal: ['animals/footstep_animal_1.wav', 'animals/footstep_animal_2.wav', 'animals/footstep_animal_3.wav', 'animals/footstep_animal_4.wav', 'animals/footstep_animal_5.wav', 'animals/footstep_animal_6.wav'],
+  // Recolección a mano: antes un mismo tono synth para palos y piedras sueltas.
+  // Ahora un rustle de arbusto/pasto para palos y un golpe de roca para piedras.
+  pickupRustle: ['items/pickup_rustle_1.wav', 'items/pickup_rustle_2.wav', 'items/pickup_rustle_3.wav', 'items/pickup_rustle_4.wav', 'items/pickup_rustle_5.wav'],
+  pickupRock: ['items/pickup_rock_1.wav', 'items/pickup_rock_2.wav'],
+  // UI: abrir/cerrar inventario y equipar herramienta (se reutiliza el sample
+  // de cota de malla como "clank" genérico de equipar, no hay uno más específico).
+  bagOpen: ['ui/open_bag.wav'],
+  bagClose: ['ui/close_bag.wav'],
+  equipClank: ['ui/chainmail1.wav', 'ui/chainmail2.wav']
 };
 
 const SoundFX = (function () {
@@ -21,9 +44,7 @@ const SoundFX = (function () {
   let master = null;
   let sfxBus = null;
   let ambientBus = null;
-  let dayGain = null;
   let nightGain = null;
-  let birdsGain = null;
   let windGain = null;
 
   // Volumen/mute de cada canal, controlables por separado desde Ajustes.
@@ -70,6 +91,7 @@ const SoundFX = (function () {
       const loaded = await Promise.all(files.map(async (f) => {
         try {
           const res = await fetch(ASSET_BASE + f);
+          if (!res.ok) throw new Error(`HTTP ${res.status} en ${ASSET_BASE + f}`);
           const arr = await res.arrayBuffer();
           return await actx.decodeAudioData(arr);
         } catch (e) {
@@ -78,6 +100,12 @@ const SoundFX = (function () {
         }
       }));
       buffers[key] = loaded.filter(Boolean);
+      // Resumen por categoría: si acá aparece "0/N" para alguna categoría,
+      // esa categoría siempre va a caer al sonido sintetizado de respaldo
+      // (revisar el warning de arriba con el nombre de archivo exacto que falló).
+      if (buffers[key].length < files.length) {
+        console.warn(`Audio "${key}": ${buffers[key].length}/${files.length} samples cargados`);
+      }
     }));
   }
 
@@ -100,6 +128,26 @@ const SoundFX = (function () {
     const list = buffers[key];
     if (!list || !list.length) return false;
     return playBuffer(list[Math.floor(Math.random() * list.length)], opts);
+  }
+
+  // Antes los sonidos de fauna (gruñidos, aullidos, mordidas...) sonaban al
+  // mismo volumen sin importar dónde estuviera esa criatura respecto al
+  // jugador — con varios chunks cargados a la vez, eso hacía que se
+  // escucharan todo el tiempo aunque el animal estuviera lejísimos fuera de
+  // pantalla. HEAR_R es más o menos lo que entra en cámara con el zoom por
+  // defecto; HOWL_R es un poco más porque un aullido se supone que se oye
+  // desde más lejos que un gruñido.
+  const HEAR_R = 700;
+  const HOWL_R = 1050;
+
+  // Devuelve un multiplicador de volumen 0..1 según qué tan lejos está (x, y)
+  // del jugador (1 = está al lado, 0 = fuera del radio de audición). Si no se
+  // pasan coordenadas (sonidos de UI/jugador/ambiente) siempre devuelve 1.
+  function hearFactor(x, y, r = HEAR_R) {
+    if (x === undefined || y === undefined) return 1;
+    const d = dist(state.player.x, state.player.y, x, y);
+    if (d >= r) return 0;
+    return 1 - d / r;
   }
 
   function noiseBuffer(dur) {
@@ -145,21 +193,9 @@ const SoundFX = (function () {
   function startAmbient() {
     if (ambientStarted) return;
     ambientStarted = true;
-    // Lecho sintetizado (siempre suena, sin esperar a que carguen los assets).
-    dayGain = actx.createGain();
-    dayGain.gain.value = 0.16;
-    dayGain.connect(ambientBus);
-    const daySrc = actx.createBufferSource();
-    daySrc.buffer = noiseBuffer(2);
-    daySrc.loop = true;
-    const dayFilt = actx.createBiquadFilter();
-    dayFilt.type = 'bandpass';
-    dayFilt.frequency.value = 900;
-    dayFilt.Q.value = 0.6;
-    daySrc.connect(dayFilt);
-    dayFilt.connect(dayGain);
-    daySrc.start();
-
+    // Antes había acá un lecho sintetizado de día (ruido filtrado en banda,
+    // sonaba a viento artificial) que se sumaba al sample real de viento.
+    // Se sacó: de día solo queda windLoop (el .mp3 real de assets/audio/).
     nightGain = actx.createGain();
     nightGain.gain.value = 0;
     nightGain.connect(ambientBus);
@@ -173,25 +209,11 @@ const SoundFX = (function () {
     nightFilt.connect(nightGain);
     nightSrc.start();
 
-    // Pájaros y viento como buses propios conectados directo al ambientBus
-    // (NO en cadena con dayGain/nightGain), para que su volumen no quede
-    // pisado por lo bajo que está el lecho sintetizado.
-    birdsGain = actx.createGain();
-    birdsGain.gain.value = 0.55;
-    birdsGain.connect(ambientBus);
-
     windGain = actx.createGain();
     windGain.gain.value = 0.3; // el viento suena de día Y de noche, un poco más fuerte de noche
     windGain.connect(ambientBus);
 
     preloadSamples().then(() => {
-      if (buffers.birdsLoop && buffers.birdsLoop[0]) {
-        const src = actx.createBufferSource();
-        src.buffer = buffers.birdsLoop[0];
-        src.loop = true;
-        src.connect(birdsGain);
-        src.start();
-      }
       if (buffers.windLoop && buffers.windLoop[0]) {
         const src = actx.createBufferSource();
         src.buffer = buffers.windLoop[0];
@@ -201,11 +223,18 @@ const SoundFX = (function () {
       }
     });
 
+    // Pajaritos/cuervos sueltos. OJO: antes 'birdsLoop' (ambient/birds_1.wav)
+    // sonaba en loop CONTINUO e infinito por su cuenta, aparte de este
+    // temporizador — por eso se escuchaba muchísimo más seguido que el
+    // cuervo. Ahora birdsLoop entra acá como una opción más de "pájaro" y
+    // comparte exactamente la misma frecuencia de disparo que el cuervo
+    // (50/50 entre pájaro y cuervo cada vez que toca).
     setInterval(() => {
       if (!actx || !ambientActive) return;
-      if (currentDarkness < 0.3 && Math.random() < 0.5) {
-        const useCrow = Math.random() < 0.35;
-        const played = playRandom(useCrow ? 'crow' : 'birdChirp', {
+      if (currentDarkness < 0.3 && Math.random() < 0.08) {
+        const useCrow = Math.random() < 0.5;
+        const birdKey = Math.random() < 0.5 ? 'birdChirp' : 'birdsLoop';
+        const played = playRandom(useCrow ? 'crow' : birdKey, {
           vol: (useCrow ? 0.35 : 0.5) * (1 - currentDarkness),
           rateJitter: 0.08,
           bus: ambientBus
@@ -215,7 +244,7 @@ const SoundFX = (function () {
       if (currentDarkness > 0.5 && Math.random() < 0.3) {
         tone(rand(170, 260), 0.5, 'sine', 0.06 * currentDarkness, rand(140, 190));
       }
-    }, 1500);
+    }, 10000);
   }
 
   return {
@@ -238,9 +267,7 @@ const SoundFX = (function () {
     setAmbientActive(active) { ambientActive = active; applyAmbientGain(); },
     setDarkness(d) {
       currentDarkness = d;
-      if (dayGain) dayGain.gain.setTargetAtTime(0.16 * (1 - d), actx.currentTime, 0.8);
       if (nightGain) nightGain.gain.setTargetAtTime(0.14 * d, actx.currentTime, 0.8);
-      if (birdsGain) birdsGain.gain.setTargetAtTime(0.55 * (1 - d * 0.85), actx.currentTime, 0.8);
       if (windGain) windGain.gain.setTargetAtTime(0.3 + d * 0.18, actx.currentTime, 0.8);
     },
     chop() {
@@ -256,7 +283,14 @@ const SoundFX = (function () {
       }
     },
     berry() { tone(rand(500, 700), 0.12, 'triangle', 0.2, rand(750, 900)); },
-    pickup() { tone(rand(340, 420), 0.09, 'triangle', 0.18, rand(260, 320)); },
+    // kind: 'rock' para piedras sueltas, cualquier otra cosa (o nada) para
+    // palos/rustle genérico. Cae al tono sintetizado si el sample no cargó.
+    pickup(kind) {
+      const key = kind === 'rock' ? 'pickupRock' : 'pickupRustle';
+      if (!playRandom(key, { vol: 0.35, rateJitter: 0.1 })) {
+        tone(rand(340, 420), 0.09, 'triangle', 0.18, rand(260, 320));
+      }
+    },
     drink() {
       if (!playRandom('drink', { vol: 0.5, rateJitter: 0.05 })) {
         noiseBurst(0.25, 'bandpass', 1800, 0.15);
@@ -277,14 +311,80 @@ const SoundFX = (function () {
     },
     craftOk() { tone(440, 0.1, 'triangle', 0.25, 660); setTimeout(() => tone(660, 0.15, 'triangle', 0.22, 880), 90); },
     craftFail() { tone(180, 0.2, 'sawtooth', 0.2, 120); },
-    wolfGrowl() { tone(90, 0.35, 'sawtooth', 0.18, 70); },
-    wolfHit() { noiseBurst(0.12, 'bandpass', 1200, 0.3); },
-    wolfDeath() { tone(300, 0.4, 'sawtooth', 0.25, 60); },
-    playerHurt() { noiseBurst(0.2, 'lowpass', 500, 0.3); tone(150, 0.25, 'sine', 0.25, 80); },
+    // Gruñido de aviso al entrar en modo persecución. x,y = posición del lobo.
+    wolfGrowl(x, y) {
+      const f = hearFactor(x, y);
+      if (f <= 0) return;
+      if (!playRandom('wolfGrowl', { vol: 0.4 * f, rateJitter: 0.05 })) tone(90, 0.35, 'sawtooth', 0.18 * f, 70);
+    },
+    // Mordida del lobo al morder al jugador (distinto del quejido de dolor).
+    wolfAttack(x, y) {
+      const f = hearFactor(x, y);
+      if (f <= 0) return;
+      if (!playRandom('wolfAttack', { vol: 0.45 * f, rateJitter: 0.08 })) noiseBurst(0.1, 'bandpass', 900, 0.3 * f);
+    },
+    // Quejido del lobo al recibir un golpe del jugador.
+    wolfHit(x, y) {
+      const f = hearFactor(x, y);
+      if (f <= 0) return;
+      if (!playRandom('wolfHurt', { vol: 0.55 * f, rateJitter: 0.08 })) noiseBurst(0.12, 'bandpass', 1200, 0.3 * f);
+    },
+    wolfDeath(x, y) {
+      const f = hearFactor(x, y);
+      if (f <= 0) return;
+      if (!playRandom('wolfDead', { vol: 0.6 * f, rateJitter: 0.05 })) tone(300, 0.4, 'sawtooth', 0.25 * f, 60);
+    },
+    // Aullido ambiental nocturno, no ligado a la persecución del jugador.
+    // Radio más grande (HOWL_R) porque un aullido se oye desde más lejos.
+    wolfHowl(x, y) {
+      const f = hearFactor(x, y, HOWL_R);
+      if (f <= 0) return;
+      playRandom('wolfHowl', { vol: 0.42 * f, rateJitter: 0.04, bus: ambientBus });
+    },
+    // Ciervo pastando tranquilo. x,y = posición del ciervo.
+    deerGrunt(x, y) {
+      const f = hearFactor(x, y);
+      if (f > 0) playRandom('deerGrunt', { vol: 0.22 * f, rateJitter: 0.06 });
+    },
+    // Ciervo alertado, justo antes de salir corriendo.
+    deerSnort(x, y) {
+      const f = hearFactor(x, y);
+      if (f > 0) playRandom('deerSnort', { vol: 0.35 * f, rateJitter: 0.05 });
+    },
+    deerHurt(x, y) {
+      const f = hearFactor(x, y);
+      if (f <= 0) return;
+      if (!playRandom('deerHurt', { vol: 0.4 * f, rateJitter: 0.08 })) noiseBurst(0.12, 'bandpass', 1400, 0.25 * f);
+    },
+    deerDeath(x, y) {
+      const f = hearFactor(x, y);
+      if (f <= 0) return;
+      if (!playRandom('deerDead', { vol: 0.4 * f, rateJitter: 0.04 })) tone(260, 0.35, 'sawtooth', 0.2 * f, 90);
+    },
+    // Pisadas de animal (lobo persiguiendo, ciervo huyendo), más grave/discreto
+    // que el paso del jugador. x,y = posición del animal.
+    footstepAnimal(x, y, intensity = 1) {
+      const f = hearFactor(x, y);
+      if (f > 0) playRandom('footstepAnimal', { vol: 0.12 * intensity * f, rateJitter: 0.15 });
+    },
+    playerHurt() {
+      if (!playRandom('playerHurt', { vol: 0.5, rateJitter: 0.06 })) {
+        noiseBurst(0.2, 'lowpass', 500, 0.3);
+        tone(150, 0.25, 'sine', 0.25, 80);
+      }
+    },
+    playerDeath() {
+      if (!playRandom('playerDead', { vol: 0.55 })) tone(220, 1.2, 'sawtooth', 0.2, 55);
+    },
     dayChime() { tone(660, 0.5, 'sine', 0.15, 880); },
     sleep() { tone(520, 0.3, 'sine', 0.15, 320); setTimeout(() => tone(320, 0.4, 'sine', 0.12, 220), 200); },
     gameOverSting() { tone(220, 1.2, 'sawtooth', 0.2, 55); },
-    click() { tone(500, 0.08, 'triangle', 0.15); }
+    click() { tone(500, 0.08, 'triangle', 0.15); },
+    // Abrir/cerrar el panel de inventario (antes usaban click() genérico).
+    bagOpen() { if (!playRandom('bagOpen', { vol: 0.4 })) tone(500, 0.08, 'triangle', 0.15); },
+    bagClose() { if (!playRandom('bagClose', { vol: 0.4 })) tone(400, 0.08, 'triangle', 0.12); },
+    // Cambiar la herramienta "en la mano" (antes usaba click() genérico).
+    equipClank() { if (!playRandom('equipClank', { vol: 0.35, rateJitter: 0.05 })) tone(500, 0.08, 'triangle', 0.15); }
   };
 })();
 

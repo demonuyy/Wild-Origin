@@ -168,7 +168,7 @@ function generateChunk(cx, cy) {
   if (rnd() < 0.4) {
     const x = ox + crand(0, CHUNK_SIZE);
     const y = oy + crand(0, CHUNK_SIZE);
-    if (!nearSpawn(x, y)) deer.push({ x, y, speed: 110, wanderTarget: null, fleeing: false, chunkKey: key });
+    if (!nearSpawn(x, y)) deer.push({ x, y, speed: 110, health: 18, maxHealth: 18, wanderTarget: null, state: 'graze', grazeTimer: crand(2, 6), alertCd: 0, chunkKey: key });
   }
   for (let i = 0; i < 22; i++) {
     grassDecor.push({ x: ox + crand(0, CHUNK_SIZE), y: oy + crand(0, CHUNK_SIZE), s: crand(0.5, 1.3), rot: crand(0, Math.PI * 2), chunkKey: key });
