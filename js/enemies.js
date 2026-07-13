@@ -1,5 +1,6 @@
 import { state, rand, dist, clamp, DAY_LENGTH, isNightPhase } from './config.js';
 import { SoundFX } from './audio.js';
+import { spawnBlood } from './world.js';
 import { pushLog } from './ui.js';
 
 // Radio en el que un lobo que entra en persecución llama a la manada: otros
@@ -60,6 +61,7 @@ export function updateWolves(dt) {
         w.attackCd = 1.1;
         SoundFX.wolfAttack(w.x, w.y);
         SoundFX.playerHurt();
+        spawnBlood(state.player.x, state.player.y, 3);
         pushLog('¡Un lobo te mordió!');
       }
       w.footstepTimer = (w.footstepTimer || 0) - dt;

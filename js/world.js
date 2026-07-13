@@ -70,6 +70,7 @@ export function generateWorld() {
   state.wolves = [];
   state.deer = [];
   state.grassDecor = [];
+  state.bloodDecals = [];
   state.sticks = [];
   state.stones = [];
   state.chunkStore = {};
@@ -304,6 +305,72 @@ export function drawGrassDecor(ctx, cam, viewW, viewH) {
       ctx.quadraticCurveTo(off * g.s + sway * 0.3, -5 * g.s, off * g.s + sway, -9 * g.s);
       ctx.stroke();
     }
+    ctx.restore();
+  }
+}
+
+// ---------- Manchas de sangre ----------
+// Se generan cuando el jugador o un animal reciben daño (ver hitDeer en
+// animals.js, tryAttack en player.js y el mordisco del lobo en enemies.js).
+// No están atadas a chunks: son puramente decorativas, se van desvaneciendo
+// solas y se descartan por completo al reiniciar el mundo.
+const BLOOD_MAX = 220;
+
+function makeDrop(x, y) {
+  const life = rand(30, 48);
+  return {
+    x, y,
+    r: rand(2, 4.5),
+    squash: rand(0.55, 0.9),
+    rot: rand(0, Math.PI * 2),
+    life,
+    maxLife: life
+  };
+}
+
+// amount = cuántas gotitas sueltas alrededor del punto de impacto (más para
+// una muerte, menos para un golpe que solo hiere).
+export function spawnBlood(x, y, amount = 3) {
+  for (let i = 0; i < amount; i++) {
+    state.bloodDecals.push(makeDrop(x + rand(-9, 9), y + rand(-5, 10)));
+  }
+  // Cap simple para que una partida larga con muchas peleas no acumule
+  // manchas sin límite: se descartan primero las más viejas.
+  if (state.bloodDecals.length > BLOOD_MAX) {
+    state.bloodDecals.splice(0, state.bloodDecals.length - BLOOD_MAX);
+  }
+}
+
+// Llamado una vez por frame desde update() en game.js. Las manchas se van
+// desvaneciendo (ver alpha en drawBloodDecals) y desaparecen del todo cuando
+// su vida llega a 0.
+export function updateBloodDecals(dt) {
+  for (let i = state.bloodDecals.length - 1; i >= 0; i--) {
+    const b = state.bloodDecals[i];
+    b.life -= dt;
+    if (b.life <= 0) state.bloodDecals.splice(i, 1);
+  }
+}
+
+export function drawBloodDecals(ctx, cam, viewW, viewH) {
+  for (const b of state.bloodDecals) {
+    const sx = b.x - cam.x;
+    const sy = b.y - cam.y;
+    if (sx < -20 || sx > viewW + 20 || sy < -20 || sy > viewH + 20) continue;
+    // Se desvanece en el último tercio de vida en vez de cortar en seco.
+    const fade = clamp(b.life / (b.maxLife * 0.4), 0, 1);
+    const alpha = 0.5 * fade;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(b.rot);
+    ctx.fillStyle = `rgba(96,10,10,${alpha})`;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, b.r, b.r * b.squash, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `rgba(140,20,18,${alpha * 0.6})`;
+    ctx.beginPath();
+    ctx.ellipse(-b.r * 0.2, -b.r * 0.2, b.r * 0.4, b.r * 0.4 * b.squash, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 }

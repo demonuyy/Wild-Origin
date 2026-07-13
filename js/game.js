@@ -1,6 +1,6 @@
 import { state, canvas, DAY_LENGTH, clamp } from './config.js';
 import { SoundFX } from './audio.js';
-import { generateWorld, updateChunks, restoreChunksFromSave } from './world.js';
+import { generateWorld, updateChunks, restoreChunksFromSave, updateBloodDecals } from './world.js';
 import { updateDeer } from './animals.js';
 import { updateWolves } from './enemies.js';
 import { resetPlayer, updatePlayer, updateInteractionPrompt } from './player.js';
@@ -84,6 +84,7 @@ function update(dt) {
 
   updateDeer(dt);
   updateWolves(dt);
+  updateBloodDecals(dt);
 
   if (state.player.health <= 0) endGame();
   updateHUD();

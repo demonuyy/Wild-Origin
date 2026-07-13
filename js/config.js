@@ -51,6 +51,10 @@ export const state = {
   wolves: [],
   deer: [],
   grassDecor: [],
+  // Manchas de sangre en el suelo (jugador o animal golpeado). No están
+  // atadas a chunks como grassDecor: son efímeras (se van desvaneciendo
+  // solas con updateBloodDecals) y no hace falta persistirlas al guardar.
+  bloodDecals: [],
   // Palos y piedras sueltos, recolectables a mano sin ninguna herramienta.
   // Son el único recurso disponible hasta craftear hacha/pico, ya que talar
   // árboles y minar rocas requiere tener esa herramienta en la mano.

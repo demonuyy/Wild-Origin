@@ -2,7 +2,7 @@ import { state, clamp, dist, DAY_LENGTH, invTotal, capFor, isNightPhase } from '
 import { pushLog, showHint, updateEquipUI, updateHUD, showInteractPrompt, hideInteractPrompt, isInventoryOpen } from './ui.js';
 import { SoundFX } from './audio.js';
 import { collectTreeResource, collectRockResource, collectBushResource, consumeBerry, collectStick, collectStone } from './inventory.js';
-import { removeEntity } from './world.js';
+import { removeEntity, spawnBlood } from './world.js';
 import { hitDeer } from './animals.js';
 
 let footstepTimer = 0;
@@ -179,9 +179,11 @@ export function tryAttack() {
       w.knockY = w.y - state.player.y;
       hitSomething = true;
       SoundFX.wolfHit(w.x, w.y);
+      spawnBlood(w.x, w.y, 3);
       if (w.health <= 0) {
         removeEntity('wolves', w);
         SoundFX.wolfDeath(w.x, w.y);
+        spawnBlood(w.x, w.y, 6);
         pushLog('El lobo cayó');
       }
     }
@@ -193,6 +195,16 @@ export function tryAttack() {
     }
   }
   if (hitSomething) pushLog('¡Golpe certero!');
+}
+
+// Devuelve true si (x,y) cae dentro del óvalo de una laguna (no del halo de
+// orilla, la forma real de agua). La usa updatePlayer() para frenar al jugador.
+function isInWater(x, y) {
+  return state.ponds.some(p => {
+    const dx = (x - p.x) / p.rw;
+    const dy = (y - p.y) / p.rh;
+    return dx * dx + dy * dy < 1;
+  });
 }
 
 export function updatePlayer(dt) {
@@ -212,13 +224,16 @@ export function updatePlayer(dt) {
     player.dir.x = mx;
     player.dir.y = my;
     const sprint = state.keys['shift'] && player.stamina > 2;
-    const spd = player.speed * (sprint ? player.sprintMult : 1);
+    // Vadear una laguna pesa: se mueve a poco más de la mitad de velocidad,
+    // tanto caminando como corriendo.
+    const wading = isInWater(player.x, player.y);
+    const spd = player.speed * (sprint ? player.sprintMult : 1) * (wading ? 0.55 : 1);
     player.x += mx * spd * dt;
     player.y += my * spd * dt;
     if (sprint) player.stamina = clamp(player.stamina - 18 * dt, 0, 100);
     footstepTimer -= dt;
     if (footstepTimer <= 0) {
-      SoundFX.footstep(sprint ? 1.15 : 0.9);
+      SoundFX.footstep(sprint ? 1.15 : 0.9, wading);
       footstepTimer = sprint ? 0.27 : 0.4;
     }
   } else {

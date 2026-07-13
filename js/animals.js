@@ -1,6 +1,6 @@
 import { state, rand, dist } from './config.js';
 import { SoundFX } from './audio.js';
-import { removeEntity } from './world.js';
+import { removeEntity, spawnBlood } from './world.js';
 import { pushLog } from './ui.js';
 
 // Radio dentro del cual el pánico de un ciervo asusta a los demás (manada).
@@ -33,10 +33,12 @@ export function hitDeer(d, damage) {
   d.knockX = d.x - state.player.x;
   d.knockY = d.y - state.player.y;
   SoundFX.deerHurt(d.x, d.y);
+  spawnBlood(d.x, d.y, 3);
   spookDeer(d, state.player.x, state.player.y, false);
   if (d.health <= 0) {
     removeEntity('deer', d);
     SoundFX.deerDeath(d.x, d.y);
+    spawnBlood(d.x, d.y, 6);
     pushLog('El ciervo cayó');
     return true;
   }
@@ -72,8 +74,9 @@ export function updateDeer(dt) {
         d.footstepTimer = 0.22;
       }
       // Deja de huir cuando ya puso distancia de sobra con ambas amenazas.
-      const farFromPlayer = distToPlayer > 260;
-      const farFromThreat = dist(d.x, d.y, d.fleeFromX, d.fleeFromY) > 240;
+      // (antes 260/240 — ahora corren bastante más lejos antes de calmarse)
+      const farFromPlayer = distToPlayer > 480;
+      const farFromThreat = dist(d.x, d.y, d.fleeFromX, d.fleeFromY) > 440;
       if (farFromPlayer && farFromThreat) {
         d.state = 'wander';
         d.wanderTarget = null;

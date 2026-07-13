@@ -1,9 +1,9 @@
 // Todo lo que dibuja en pantalla (antes vivía adentro de game.js, mezclado
 // con el bucle principal y el binding de controles). game.js ahora solo
 // llama a render() una vez por frame.
-import { state, ctx, canvas, DAY_LENGTH, clamp } from './config.js';
+import { state, ctx, canvas, DAY_LENGTH, ZOOM_MIN, ZOOM_DEFAULT, clamp } from './config.js';
 import { SoundFX } from './audio.js';
-import { drawGround, drawGrassDecor, drawPonds, drawTree, drawRock, drawBush, drawStick, drawStone } from './world.js';
+import { drawGround, drawGrassDecor, drawBloodDecals, drawPonds, drawTree, drawRock, drawBush, drawStick, drawStone } from './world.js';
 import { drawDeer } from './animals.js';
 import { drawWolf } from './enemies.js';
 import { drawCampfire, drawShelter } from './building.js';
@@ -52,22 +52,98 @@ function renderMinimap(cam, viewW, viewH) {
 }
 
 function drawPlayer(cam) {
-  const sx = state.player.x - cam.x;
-  const moving = Math.abs(state.player.dir.x) + Math.abs(state.player.dir.y) > 0 && state.keys && (state.keys['w'] || state.keys['a'] || state.keys['s'] || state.keys['d'] || state.keys['arrowup'] || state.keys['arrowdown'] || state.keys['arrowleft'] || state.keys['arrowright']);
+  const { player } = state;
+  const sx = player.x - cam.x;
+  const moving = Math.abs(player.dir.x) + Math.abs(player.dir.y) > 0 && state.keys && (state.keys['w'] || state.keys['a'] || state.keys['s'] || state.keys['d'] || state.keys['arrowup'] || state.keys['arrowdown'] || state.keys['arrowleft'] || state.keys['arrowright']);
   const bob = moving ? Math.sin(state.elapsed * 10) * 1.6 : 0;
-  const sy = state.player.y - cam.y + bob;
+  const sy = player.y - cam.y + bob;
+  // Vector perpendicular a la dirección (para separar los brazos a cada
+  // costado del cuerpo) y balanceo de brazos al caminar.
+  const perpX = -player.dir.y;
+  const perpY = player.dir.x;
+  const armSwing = moving ? Math.sin(state.elapsed * 10) * 4 : 0;
+  const hasTool = player.hasSpear || player.equippedTool === 'axe' || player.equippedTool === 'pickaxe';
 
   ctx.fillStyle = 'rgba(0,0,0,0.32)';
   ctx.beginPath();
-  ctx.ellipse(sx, state.player.y - cam.y + 15, 12, 5, 0, 0, Math.PI * 2);
+  ctx.ellipse(sx, player.y - cam.y + 15, 12, 5, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  if (state.player.hasBackpack) {
+  if (player.hasBackpack) {
     ctx.fillStyle = '#5a4530';
     ctx.beginPath();
-    ctx.ellipse(sx - state.player.dir.y * 8, sy + 4 - state.player.dir.x * 2, 6, 8, 0, 0, Math.PI * 2);
+    ctx.ellipse(sx - player.dir.y * 8, sy + 4 - player.dir.x * 2, 6, 8, 0, 0, Math.PI * 2);
     ctx.fill();
   }
+
+  // ---- Brazos y manos ----
+  // Se dibujan antes que el torso a propósito: el hombro queda tapado por la
+  // ropa y solo se ve el brazo/mano asomando hacia afuera, como en cualquier
+  // sprite top-down con capas. La mano "libre" se balancea al caminar; la
+  // mano "activa" agarra la lanza/hacha/pico más adelante si hay una
+  // herramienta en la mano (si no, se balancea igual que la libre).
+  function drawArm(shoulderSide, handX, handY) {
+    const shoulderX = sx + perpX * 6 * shoulderSide;
+    const shoulderY = sy + 3 + perpY * 6 * shoulderSide;
+    ctx.strokeStyle = '#71492a';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(shoulderX, shoulderY);
+    ctx.lineTo(handX, handY);
+    ctx.stroke();
+    const handG = ctx.createRadialGradient(handX - 1, handY - 1, 0.5, handX, handY, 3.4);
+    handG.addColorStop(0, '#f0cca0');
+    handG.addColorStop(1, '#cf9d6c');
+    ctx.fillStyle = handG;
+    ctx.beginPath();
+    ctx.arc(handX, handY, 3.1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const freeShoulderX = sx + perpX * 6 * -1;
+  const freeShoulderY = sy + 3 + perpY * 6 * -1;
+  drawArm(-1,
+    freeShoulderX - player.dir.x * (armSwing - 3),
+    freeShoulderY - player.dir.y * (armSwing - 3) + 9);
+
+  const activeShoulderX = sx + perpX * 6;
+  const activeShoulderY = sy + 3 + perpY * 6;
+  if (hasTool) {
+    drawArm(1, sx + player.dir.x * 14, sy + player.dir.y * 14 + 2);
+  } else {
+    drawArm(1,
+      activeShoulderX + player.dir.x * (armSwing + 3),
+      activeShoulderY + player.dir.y * (armSwing + 3) + 9);
+  }
+
+  // ---- Piernas ----
+  // Mismo criterio de capas que los brazos: se dibujan antes que el torso
+  // para que la cadera quede tapada por la ropa y solo se vean los pies
+  // asomando por debajo. Se balancean en contrafase entre sí (una pierna
+  // adelante, la otra atrás) siguiendo el mismo ritmo que el bamboleo del
+  // cuerpo, para que se note el paso al caminar.
+  function drawLeg(hipSide, swing) {
+    const hipX = sx + perpX * 4 * hipSide;
+    const hipY = sy + 12;
+    const footX = hipX + player.dir.x * swing;
+    const footY = hipY + 8 + player.dir.y * swing;
+    ctx.strokeStyle = '#4a3320';
+    ctx.lineWidth = 3.4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(hipX, hipY);
+    ctx.lineTo(footX, footY);
+    ctx.stroke();
+    // Bota: una manchita más oscura en la punta del pie.
+    ctx.fillStyle = '#2e2015';
+    ctx.beginPath();
+    ctx.ellipse(footX, footY, 2.6, 1.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const legSwing = moving ? Math.sin(state.elapsed * 10) * 5 : 0;
+  drawLeg(-1, legSwing);
+  drawLeg(1, -legSwing);
 
   const bodyG = ctx.createLinearGradient(sx - 9, 0, sx + 9, 0);
   bodyG.addColorStop(0, '#5f3f22');
@@ -89,48 +165,81 @@ function drawPlayer(cam) {
   ctx.arc(sx, sy - 12, 8, 0, Math.PI * 2);
   ctx.fill();
 
-  if (state.player.hasSpear) {
+  if (player.hasSpear) {
     ctx.strokeStyle = '#c9a86a';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(sx + state.player.dir.x * 4, sy + state.player.dir.y * 4);
-    ctx.lineTo(sx + state.player.dir.x * 34, sy + state.player.dir.y * 34);
+    ctx.moveTo(sx + player.dir.x * 4, sy + player.dir.y * 4);
+    ctx.lineTo(sx + player.dir.x * 34, sy + player.dir.y * 34);
     ctx.stroke();
     ctx.fillStyle = '#e4e4dc';
     ctx.beginPath();
-    ctx.arc(sx + state.player.dir.x * 36, sy + state.player.dir.y * 36, 3, 0, Math.PI * 2);
+    ctx.arc(sx + player.dir.x * 36, sy + player.dir.y * 36, 3, 0, Math.PI * 2);
     ctx.fill();
   }
   // Hacha o pico "en la mano": solo se dibuja si esa es la herramienta activa,
   // para que se note a simple vista que el jugador puede talar o minar ahora mismo.
-  if (state.player.equippedTool === 'axe' || state.player.equippedTool === 'pickaxe') {
-    const hx = sx + state.player.dir.x * 16;
-    const hy = sy + state.player.dir.y * 16 - 4;
+  if (player.equippedTool === 'axe' || player.equippedTool === 'pickaxe') {
+    const hx = sx + player.dir.x * 16;
+    const hy = sy + player.dir.y * 16 - 4;
     ctx.strokeStyle = '#5a4530';
     ctx.lineWidth = 2.4;
     ctx.beginPath();
     ctx.moveTo(hx, hy + 10);
-    ctx.lineTo(hx + state.player.dir.x * 4, hy - 8);
+    ctx.lineTo(hx + player.dir.x * 4, hy - 8);
     ctx.stroke();
     ctx.fillStyle = '#b7b6ac';
     ctx.beginPath();
-    if (state.player.equippedTool === 'axe') {
-      ctx.moveTo(hx + state.player.dir.x * 4 - 5, hy - 8);
-      ctx.lineTo(hx + state.player.dir.x * 4 + 5, hy - 10);
-      ctx.lineTo(hx + state.player.dir.x * 4 + 3, hy - 2);
-      ctx.lineTo(hx + state.player.dir.x * 4 - 4, hy - 3);
+    if (player.equippedTool === 'axe') {
+      ctx.moveTo(hx + player.dir.x * 4 - 5, hy - 8);
+      ctx.lineTo(hx + player.dir.x * 4 + 5, hy - 10);
+      ctx.lineTo(hx + player.dir.x * 4 + 3, hy - 2);
+      ctx.lineTo(hx + player.dir.x * 4 - 4, hy - 3);
     } else {
-      ctx.moveTo(hx + state.player.dir.x * 4 - 6, hy - 5);
-      ctx.lineTo(hx + state.player.dir.x * 4 + 6, hy - 11);
-      ctx.lineTo(hx + state.player.dir.x * 4 + 2, hy - 3);
+      ctx.moveTo(hx + player.dir.x * 4 - 6, hy - 5);
+      ctx.lineTo(hx + player.dir.x * 4 + 6, hy - 11);
+      ctx.lineTo(hx + player.dir.x * 4 + 2, hy - 3);
     }
     ctx.closePath();
     ctx.fill();
   }
-  ctx.fillStyle = '#e8933a';
-  ctx.beginPath();
-  ctx.arc(sx + state.player.dir.x * 10, sy + state.player.dir.y * 10 - 8, 2.2, 0, Math.PI * 2);
-  ctx.fill();
+}
+
+// ---------- Niebla al alejar la cámara ----------
+// Cuanto más aleja el jugador el zoom (rueda del mouse hacia atrás), más
+// nubes/neblina cruzan la pantalla — a ZOOM_DEFAULT (o más cerca) no hay
+// nada, a ZOOM_MIN está en su punto máximo. Además de dar ambiente, disimula
+// un poco el borde de lo que se alcanza a cargar/dibujar bien lejos.
+// Cada puff tiene su propia semilla de posición y velocidad de deriva; se
+// dibujan en espacio de pantalla (no del mundo) así que no hace falta cam.
+const FOG_PUFFS = [
+  { seed: 0.11, seedY: 0.62, speedX: 6, speedY: 1.4, size: 0.55 },
+  { seed: 0.47, seedY: 0.18, speedX: -4.5, speedY: 2.1, size: 0.75 },
+  { seed: 0.72, seedY: 0.83, speedX: 5.2, speedY: -1.8, size: 0.42 },
+  { seed: 0.29, seedY: 0.41, speedX: -3.1, speedY: -2.6, size: 0.62 },
+  { seed: 0.88, seedY: 0.05, speedX: 3.8, speedY: 2.9, size: 0.5 }
+];
+
+function drawFogLayer(t) {
+  if (t <= 0.01) return;
+  const w = canvas.width, h = canvas.height;
+  const span = w + h * 0.6;
+  ctx.save();
+  for (const p of FOG_PUFFS) {
+    // Deriva en loop infinito (módulo) para no tener que reposicionar nada a mano.
+    const px = (((p.seed * w + state.elapsed * p.speedX * 9) % span) + span) % span - h * 0.3;
+    const py = (((p.seedY * h + state.elapsed * p.speedY * 9) % (h + w * 0.3)) + (h + w * 0.3)) % (h + w * 0.3) - w * 0.15;
+    const r = (w + h) * 0.5 * p.size * (0.55 + t * 0.45);
+    const g = ctx.createRadialGradient(px, py, 0, px, py, r);
+    g.addColorStop(0, `rgba(213,221,224,${0.28 * t})`);
+    g.addColorStop(0.6, `rgba(213,221,224,${0.13 * t})`);
+    g.addColorStop(1, 'rgba(213,221,224,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 // Dibuja un frame completo: terreno, entidades ordenadas por Y, oscuridad
@@ -150,6 +259,7 @@ export function render() {
 
   drawGround(ctx, { width: viewW, height: viewH }, cam);
   drawGrassDecor(ctx, cam, viewW, viewH);
+  drawBloodDecals(ctx, cam, viewW, viewH);
   drawPonds(ctx, cam, viewW, viewH);
 
   // Se descarta lo que quedó fuera de pantalla ANTES de armar el array a ordenar
@@ -188,7 +298,13 @@ export function render() {
     }
   }
 
-  ctx.restore(); // el resto (oscuridad, flash, minimapa) se dibuja en espacio de pantalla real, sin escalar
+  ctx.restore(); // el resto (niebla, oscuridad, flash, minimapa) se dibuja en espacio de pantalla real, sin escalar
+
+  // 0 = zoom normal/cercano, 1 = zoom mínimo (cámara lo más alejada posible).
+  // Un mismo valor maneja tanto la niebla visual como el refuerzo de viento.
+  const zoomFog = clamp((ZOOM_DEFAULT - zoom) / (ZOOM_DEFAULT - ZOOM_MIN), 0, 1);
+  drawFogLayer(zoomFog);
+  SoundFX.setZoomFog(zoomFog);
 
   const phase = (state.elapsed % DAY_LENGTH) / DAY_LENGTH;
   let darkness = 0;

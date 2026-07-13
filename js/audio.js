@@ -9,6 +9,8 @@ const SAMPLE_FILES = {
   crunch: ['player/crunch.1.wav', 'player/crunch.2.wav', 'player/crunch.3.wav', 'player/crunch.4.wav', 'player/crunch.5.wav', 'player/crunch.6.wav', 'player/crunch.7.wav'],
   drink: ['player/drink_1.wav', 'player/drink_2.wav', 'player/drink_3.wav'],
   footstepGrass: ['player/footstep_grass_000.ogg', 'player/footstep_grass_001.ogg', 'player/footstep_grass_002.ogg', 'player/footstep_grass_003.ogg', 'player/footstep_grass_004.ogg'],
+  // Pasos del jugador al vadear una laguna (ver isInWater en player.js).
+  footstepWater: ['player/splash_1.wav', 'player/splash_2.wav'],
   swish: ['player/swish-1.wav', 'player/swish-2.wav', 'player/swish-3.wav', 'player/swish-4.wav', 'player/swish-5.wav'],
   playerHurt: ['player/player_hurt_1.wav', 'player/player_hurt_2.wav', 'player/player_hurt_3.wav', 'player/player_hurt_4.wav'],
   playerDead: ['player/player_dead.wav'],
@@ -56,6 +58,10 @@ const SoundFX = (function () {
 
   let ambientStarted = false;
   let currentDarkness = 0;
+  // Qué tan alejado está el zoom de cámara (0 = zoom normal/cercano, 1 =
+  // zoom mínimo/lo más alejado posible). Sube el viento un poco, como si al
+  // alejar la vista se escuchara más el ambiente abierto.
+  let currentZoomFog = 0;
   const buffers = {};
   let samplesLoading = false;
 
@@ -65,6 +71,13 @@ const SoundFX = (function () {
     if (!ambientBus) return;
     const target = (ambientMuted ? 0 : ambientVolume) * (ambientActive ? 1 : 0);
     ambientBus.gain.setTargetAtTime(target, actx.currentTime, 0.25);
+  }
+  // Combina de noche (currentDarkness) y de cámara alejada (currentZoomFog)
+  // en un único gain de viento, para no pisarse entre setDarkness y setZoomFog.
+  function applyWindGain() {
+    if (!windGain) return;
+    const target = 0.3 + currentDarkness * 0.18 + currentZoomFog * 0.22;
+    windGain.gain.setTargetAtTime(target, actx.currentTime, 0.6);
   }
 
   function ensureCtx() {
@@ -268,7 +281,13 @@ const SoundFX = (function () {
     setDarkness(d) {
       currentDarkness = d;
       if (nightGain) nightGain.gain.setTargetAtTime(0.14 * d, actx.currentTime, 0.8);
-      if (windGain) windGain.gain.setTargetAtTime(0.3 + d * 0.18, actx.currentTime, 0.8);
+      applyWindGain();
+    },
+    // t: 0 (zoom normal/cercano) a 1 (zoom mínimo, cámara lo más alejada
+    // posible). Llamado desde render() cada frame junto con la niebla visual.
+    setZoomFog(t) {
+      currentZoomFog = Math.max(0, Math.min(1, t));
+      applyWindGain();
     },
     chop() {
       if (!playRandom('axe', { vol: 0.4, rateJitter: 0.08 })) {
@@ -282,7 +301,11 @@ const SoundFX = (function () {
         tone(600, 0.05, 'square', 0.1);
       }
     },
-    berry() { tone(rand(500, 700), 0.12, 'triangle', 0.2, rand(750, 900)); },
+    berry() {
+      if (!playRandom('pickupRustle', { vol: 0.35, rateJitter: 0.1 })) {
+        tone(rand(500, 700), 0.12, 'triangle', 0.2, rand(750, 900));
+      }
+    },
     // kind: 'rock' para piedras sueltas, cualquier otra cosa (o nada) para
     // palos/rustle genérico. Cae al tono sintetizado si el sample no cargó.
     pickup(kind) {
@@ -301,7 +324,15 @@ const SoundFX = (function () {
         noiseBurst(0.15, 'highpass', 1200, 0.25);
       }
     },
-    footstep(intensity = 1) {
+    // water: true mientras el jugador vadea una laguna (ver isInWater en
+    // player.js) — usa los splashes en vez del pasto normal.
+    footstep(intensity = 1, water = false) {
+      if (water) {
+        if (!playRandom('footstepWater', { vol: 0.28 * intensity, rateJitter: 0.1 })) {
+          noiseBurst(0.1, 'bandpass', 1000, 0.15 * intensity);
+        }
+        return;
+      }
       playRandom('footstepGrass', { vol: 0.16 * intensity, rateJitter: 0.12 });
     },
     attackSwing() {
@@ -327,12 +358,12 @@ const SoundFX = (function () {
     wolfHit(x, y) {
       const f = hearFactor(x, y);
       if (f <= 0) return;
-      if (!playRandom('wolfHurt', { vol: 0.55 * f, rateJitter: 0.08 })) noiseBurst(0.12, 'bandpass', 1200, 0.3 * f);
+      if (!playRandom('wolfHurt', { vol: 0.75 * f, rateJitter: 0.08 })) noiseBurst(0.12, 'bandpass', 1200, 0.3 * f);
     },
     wolfDeath(x, y) {
       const f = hearFactor(x, y);
       if (f <= 0) return;
-      if (!playRandom('wolfDead', { vol: 0.6 * f, rateJitter: 0.05 })) tone(300, 0.4, 'sawtooth', 0.25 * f, 60);
+      if (!playRandom('wolfDead', { vol: 0.8 * f, rateJitter: 0.05 })) tone(300, 0.4, 'sawtooth', 0.25 * f, 60);
     },
     // Aullido ambiental nocturno, no ligado a la persecución del jugador.
     // Radio más grande (HOWL_R) porque un aullido se oye desde más lejos.
