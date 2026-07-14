@@ -88,6 +88,30 @@ sigan cargando bien.
 
 ---
 
+## Inventario (ítems reales, no contadores sueltos)
+
+Desde la migración a `player.inventory`, TODO ítem (recurso, comida o
+herramienta) es una entrada `{ id, qty }` en `state.player.inventory`, y
+`ITEMS` (en config.js) es la única tabla que describe cada id posible
+(label, icono, cuánto se apila, categoría `resource`/`food`/`tool`).
+
+NO volver a agregar campos sueltos tipo `player.wood` o `player.hasAxe`.
+Para agregar un ítem nuevo (carne, hierro, etc. del roadmap v0.3+):
+1. Agregarlo a `ITEMS` en config.js.
+2. Si es crafteable, agregar su receta a `RECIPES` en recipes.js (las claves
+   de `cost` son ids de `ITEMS`).
+3. Usar `addItem`/`removeItem`/`hasItem`/`countItem` (exportadas desde
+   config.js) para todo lo demás — nunca tocar `player.inventory` a mano
+   desde otro módulo.
+
+`invTotal()`/`capFor()` ya suman solo las categorías `resource`/`food`
+contra la capacidad (las herramientas nunca ocupan capacidad, igual que
+antes). Si se agrega un ítem que no es ni recurso apilable ni herramienta
+(por ejemplo algo con su propia lógica de cantidad máxima), revisar si esas
+dos funciones siguen aplicando tal cual.
+
+---
+
 ## Tests
 
 `tests/` tiene tests unitarios de crafting.js, inventory.js y save.js

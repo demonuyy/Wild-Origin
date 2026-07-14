@@ -21,7 +21,7 @@ import { state } from './config.js';
 const LEGACY_KEY = 'wildOriginSave';
 const SLOT_PREFIX = 'wildOriginSave:';
 const BACKUP_SUFFIX = ':backup';
-const SAVE_VERSION = 2;
+const SAVE_VERSION = 3;
 
 // Slot que usa hoy la UI (un único botón "Guardar partida" / "Continuar
 // partida"). El resto del módulo ya soporta varios slots (saveGame('slot2'),
@@ -41,15 +41,40 @@ function keyFor(slot) { return SLOT_PREFIX + slot; }
 function backupKeyFor(slot) { return keyFor(slot) + BACKUP_SUFFIX; }
 
 // Único lugar donde vive la lógica de "cómo pasar un guardado viejo a la
-// forma actual". Hoy no hay ninguna transformación real que hacer (v1 y v2
-// tienen los mismos campos), pero deja el patrón listo para cuando haga
-// falta uno de verdad, en vez de tener que inventarlo bajo presión.
+// forma actual".
 function migrateSaveData(data) {
   let version = data.version || 1;
   if (version < 2) {
-    // Ejemplo de cómo se vería una migración real:
-    // if (data.player && data.player.equippedTool === undefined) data.player.equippedTool = null;
     version = 2;
+  }
+  if (version < 3) {
+    // v3: el inventario dejó de ser campos sueltos en player (wood, stone,
+    // berries, hasSpear, hasAxe, hasPickaxe, hasBackpack) para pasar a un
+    // array real player.inventory = [{ id, qty }, ...] (ver ITEMS en
+    // config.js). Reconstruimos ese array a partir de los campos viejos así
+    // una partida guardada antes de este cambio conserva sus recursos y
+    // herramientas en vez de perderlos.
+    if (data.player && !Array.isArray(data.player.inventory)) {
+      const p = data.player;
+      const inventory = [];
+      const carryOver = (id, qty) => { if (qty > 0) inventory.push({ id, qty }); };
+      carryOver('wood', p.wood || 0);
+      carryOver('stone', p.stone || 0);
+      carryOver('berries', p.berries || 0);
+      if (p.hasSpear) inventory.push({ id: 'spear', qty: 1 });
+      if (p.hasAxe) inventory.push({ id: 'axe', qty: 1 });
+      if (p.hasPickaxe) inventory.push({ id: 'pickaxe', qty: 1 });
+      if (p.hasBackpack) inventory.push({ id: 'backpack', qty: 1 });
+      p.inventory = inventory;
+      delete p.wood;
+      delete p.stone;
+      delete p.berries;
+      delete p.hasSpear;
+      delete p.hasAxe;
+      delete p.hasPickaxe;
+      delete p.hasBackpack;
+    }
+    version = 3;
   }
   data.version = version;
   return data;

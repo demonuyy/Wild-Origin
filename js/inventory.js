@@ -1,4 +1,4 @@
-import { state, capFor, invTotal, clamp } from './config.js';
+import { state, capFor, invTotal, clamp, hasItem, addItem, removeItem } from './config.js';
 import { SoundFX } from './audio.js';
 import { pushLog, showHint } from './ui.js';
 import { removeEntity } from './world.js';
@@ -7,7 +7,7 @@ export function collectTreeResource(t) {
   if (t.hits <= 0) return;
   // Talar requiere el hacha, y no alcanza con tenerla craftada: tiene que
   // estar equipada ("en la mano") en ese momento.
-  if (!state.player.hasAxe) {
+  if (!hasItem('axe')) {
     SoundFX.craftFail();
     showHint('Necesitás un <b>hacha</b> para talar árboles');
     return;
@@ -24,7 +24,7 @@ export function collectTreeResource(t) {
   }
   let gained = Math.floor(Math.random() * 3) + 3;
   gained = Math.min(gained, capFor() - invTotal());
-  state.player.wood += gained;
+  addItem('wood', gained);
   t.hits -= 2;
   SoundFX.chop();
   pushLog(`Talaste madera (+${gained})`);
@@ -36,7 +36,7 @@ export function collectTreeResource(t) {
 export function collectRockResource(r) {
   if (r.hits <= 0) return;
   // Minar requiere el pico equipado en la mano, no solo poseído.
-  if (!state.player.hasPickaxe) {
+  if (!hasItem('pickaxe')) {
     SoundFX.craftFail();
     showHint('Necesitás un <b>pico</b> para minar rocas');
     return;
@@ -53,7 +53,7 @@ export function collectRockResource(r) {
   }
   let gained = Math.floor(Math.random() * 2) + 3;
   gained = Math.min(gained, capFor() - invTotal());
-  state.player.stone += gained;
+  addItem('stone', gained);
   r.hits -= 2;
   SoundFX.mine();
   pushLog(`Picaste piedra (+${gained})`);
@@ -70,7 +70,7 @@ export function collectStick(s) {
     showHint('Inventario lleno');
     return;
   }
-  state.player.wood += 1;
+  addItem('wood', 1);
   SoundFX.pickup('rustle');
   pushLog('Recogiste un palo (+1)');
   removeEntity('sticks', s);
@@ -82,7 +82,7 @@ export function collectStone(s) {
     showHint('Inventario lleno');
     return;
   }
-  state.player.stone += 1;
+  addItem('stone', 1);
   SoundFX.pickup('rock');
   pushLog('Recogiste una piedra (+1)');
   removeEntity('stones', s);
@@ -99,7 +99,7 @@ export function collectBushResource(b) {
     return;
   }
   const gained = 1;
-  state.player.berries += gained;
+  addItem('berries', gained);
   b.stock--;
   SoundFX.berry();
   pushLog(`Recogiste bayas (+${gained})`);
@@ -107,7 +107,7 @@ export function collectBushResource(b) {
 }
 
 export function consumeBerry() {
-  state.player.berries--;
+  removeItem('berries', 1);
   state.player.hunger = clamp(state.player.hunger + 22, 0, 100);
   SoundFX.eat();
   pushLog('Comiste bayas');

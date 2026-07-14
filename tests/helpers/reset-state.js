@@ -31,8 +31,7 @@ export function resetState() {
     x: 0, y: 0,
     dir: { x: 0, y: 1 },
     health: 100, hunger: 100, thirst: 100, stamina: 100,
-    wood: 0, stone: 0, berries: 0,
-    hasSpear: false, hasAxe: false, hasPickaxe: false, hasBackpack: false,
+    inventory: [],
     equippedTool: null,
     attackDamage: 12, attackRange: 34, attackCooldown: 0, hitFlash: 0
   });

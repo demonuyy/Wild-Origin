@@ -1,32 +1,43 @@
-import { state, clamp, DAY_LENGTH, invTotal, capFor, STACK_SIZE } from './config.js';
+import { state, clamp, DAY_LENGTH, invTotal, capFor, ITEMS, hasItem, countItem } from './config.js';
 import { SoundFX } from './audio.js';
 import { RECIPES } from './recipes.js';
 
 let hintTimeout = null;
 
-// Costo/estado de cada acción de la hotbar, usado solo para pintar la UI
-// (la validación real de recursos sigue viviendo en crafting.js). Los
-// números de costo salen de recipes.js: acá solo se agrega la metadata que
-// es específica de esta pantalla (qué flag de state.player indica "ya lo
-// tengo", para lanza/hacha/pico qué valor de equippedTool corresponde, y el
-// icono/tecla que también reutiliza el menú de crafteo completo (tecla C,
-// ver toggleCraftMenu más abajo) para no repetir esta tabla dos veces.
+// Metadata de cada acción de la hotbar específica de esta pantalla (a qué
+// item de ITEMS corresponde para "ya lo tengo" vía hasItem(), qué valor de
+// equippedTool corresponde para lanza/hacha/pico, y el icono/tecla que
+// también reutiliza el menú de crafteo completo). Los costos NO se repiten
+// acá: salen siempre de RECIPES[action].cost.
 const HOTBAR_CONFIG = {
-  spear: { ...RECIPES.spear.cost, ownedKey: 'hasSpear', equipKey: 'spear', icon: '🔱', key: '1' },
-  campfire: { ...RECIPES.campfire.cost, ownedKey: null, icon: '🔥', key: '2' },
-  axe: { ...RECIPES.axe.cost, ownedKey: 'hasAxe', equipKey: 'axe', icon: '🪓', key: '3' },
-  pickaxe: { ...RECIPES.pickaxe.cost, ownedKey: 'hasPickaxe', equipKey: 'pickaxe', icon: '⛏️', key: '4' },
-  backpack: { ...RECIPES.backpack.cost, ownedKey: 'hasBackpack', icon: '🎒', key: '5' },
-  shelter: { ...RECIPES.shelter.cost, ownedKey: null, icon: '⛺', key: '6' }
+  spear: { equipKey: 'spear', icon: '🔱', key: '1' },
+  campfire: { icon: '🔥', key: '2' },
+  axe: { equipKey: 'axe', icon: '🪓', key: '3' },
+  pickaxe: { equipKey: 'pickaxe', icon: '⛏️', key: '4' },
+  backpack: { icon: '🎒', key: '5' },
+  shelter: { icon: '⛺', key: '6' }
 };
+
+// Una acción "se posee" si su propio id es un item craftable que el
+// jugador ya tiene (spear/axe/pickaxe/backpack). campfire/shelter no son
+// items del inventario (se colocan en el mundo), así que nunca están
+// "poseídos" en este sentido: siempre se evalúan por costo.
+function isOwnableAction(action) {
+  return !!ITEMS[action];
+}
+
+function affordableFor(action) {
+  const cost = RECIPES[action].cost;
+  return Object.entries(cost).every(([id, qty]) => countItem(id) >= qty);
+}
 
 // Estado compartido (poseído / se puede craftear ahora / equipado) de una
 // entrada de HOTBAR_CONFIG, usado tanto por updateHotbar() como por el menú
 // de crafteo completo, para que ambos coincidan siempre.
 function craftSlotStatus(action) {
   const cfg = HOTBAR_CONFIG[action];
-  const owned = !!(cfg.ownedKey && state.player[cfg.ownedKey]);
-  const affordable = state.player.wood >= cfg.wood && state.player.stone >= cfg.stone;
+  const owned = isOwnableAction(action) && hasItem(action);
+  const affordable = affordableFor(action);
   const equipped = !!(cfg.equipKey && state.player.equippedTool === cfg.equipKey);
   return { cfg, owned, affordable, equipped };
 }
@@ -112,9 +123,9 @@ function renderCraftGrid() {
     el.classList.toggle('affordable', !owned && affordable);
     el.classList.toggle('disabled', !owned && !affordable);
     el.classList.toggle('active', equipped);
-    const costParts = [];
-    if (cfg.wood) costParts.push(`${cfg.wood}🌲`);
-    if (cfg.stone) costParts.push(`${cfg.stone}🪨`);
+    const costParts = Object.entries(RECIPES[action].cost)
+      .filter(([, qty]) => qty)
+      .map(([id, qty]) => `${qty}${ITEMS[id] ? ITEMS[id].icon : ''}`);
     const statusLabel = owned ? (cfg.equipKey ? (equipped ? 'En mano' : 'Guardado') : 'Equipado') : costParts.join(' ');
     el.innerHTML = `<span class="craftIcon">${cfg.icon}</span>` +
       `<span class="craftName">${RECIPES[action].label}</span>` +
@@ -133,7 +144,7 @@ export function isCraftMenuOpen() {
 }
 
 export function toggleCraftMenu(force) {
-  if (!state.running || state.gameOver) return;
+  if (!state.running || state.gameOver || state.paused) return;
   const el = document.getElementById('craftPanel');
   const show = force !== undefined ? force : !el.classList.contains('show');
   el.classList.toggle('show', show);
@@ -154,34 +165,25 @@ export function closeCraftMenu() {
 }
 
 // ---------- Inventario en grilla (5 columnas x 2 filas = 10 slots) ----------
-// Los materiales/bayas siguen viviendo como contadores simples en state.player
-// (wood/stone/berries), igual que antes: acá solo se "parten" en stacks de
-// STACK_SIZE para mostrarlos. Las herramientas (no se apilan) ocupan un slot
-// entero cada una, solo si el jugador la tiene.
+// player.inventory ya es un array real de { id, qty } (ver ITEMS en
+// config.js): acá solo se "parten" los apilables en stacks de ITEMS[id].stack
+// para mostrarlos. Las herramientas (stack: 1) siempre ocupan un slot entero.
 const INV_SLOT_COUNT = 10;
-const ITEM_INFO = {
-  wood: { icon: '🌲', name: 'Madera', stackable: true },
-  stone: { icon: '🪨', name: 'Piedra', stackable: true },
-  berries: { icon: '🍓', name: 'Bayas', stackable: true },
-  spear: { icon: '🔱', name: 'Lanza', stackable: false },
-  axe: { icon: '🪓', name: 'Hacha', stackable: false },
-  pickaxe: { icon: '⛏️', name: 'Pico', stackable: false },
-  backpack: { icon: '🎒', name: 'Mochila', stackable: false }
-};
 
 function buildInventorySlots() {
   const slots = [];
-  const materials = [['wood', state.player.wood], ['stone', state.player.stone], ['berries', state.player.berries]];
-  for (const [type, amount] of materials) {
-    let remaining = amount;
-    while (remaining > 0) {
-      slots.push({ type, count: Math.min(STACK_SIZE, remaining) });
-      remaining -= STACK_SIZE;
+  for (const entry of state.player.inventory) {
+    const info = ITEMS[entry.id];
+    if (!info || entry.qty <= 0) continue;
+    if (info.category === 'tool') {
+      slots.push({ type: entry.id, count: 1 });
+      continue;
     }
-  }
-  const tools = [['spear', state.player.hasSpear], ['axe', state.player.hasAxe], ['pickaxe', state.player.hasPickaxe], ['backpack', state.player.hasBackpack]];
-  for (const [type, owned] of tools) {
-    if (owned) slots.push({ type, count: 1 });
+    let remaining = entry.qty;
+    while (remaining > 0) {
+      slots.push({ type: entry.id, count: Math.min(info.stack, remaining) });
+      remaining -= info.stack;
+    }
   }
   while (slots.length < INV_SLOT_COUNT) slots.push(null);
   return slots.slice(0, INV_SLOT_COUNT);
@@ -208,14 +210,15 @@ function renderInventoryGrid() {
       grid.appendChild(el);
       continue;
     }
-    const info = ITEM_INFO[item.type];
+    const info = ITEMS[item.type];
+    const stackable = info.category !== 'tool';
     el.classList.add('filled');
-    if (!info.stackable) {
+    if (!stackable) {
       el.classList.add('toolSlot');
       if (state.player.equippedTool === item.type) el.classList.add('active');
     }
-    el.title = info.name;
-    el.innerHTML = `<span class="invIcon2">${info.icon}</span>` + (info.stackable ? `<span class="stackCount">${item.count}</span>` : '');
+    el.title = info.label;
+    el.innerHTML = `<span class="invIcon2">${info.icon}</span>` + (stackable ? `<span class="stackCount">${item.count}</span>` : '');
     el.draggable = true;
     el.addEventListener('dragstart', (e) => {
       e.dataTransfer.setData('text/plain', item.type);
@@ -237,7 +240,7 @@ export function isInventoryOpen() {
 }
 
 export function toggleInventory(force) {
-  if (!state.running || state.gameOver) return;
+  if (!state.running || state.gameOver || state.paused) return;
   const el = document.getElementById('invPanel');
   const show = force !== undefined ? force : !el.classList.contains('show');
   el.classList.toggle('show', show);

@@ -1,16 +1,16 @@
-import { state, BACKPACK_BONUS } from './config.js';
+import { state, BACKPACK_BONUS, hasItem, addItem } from './config.js';
 import { SoundFX } from './audio.js';
 import { pushLog, showHint, updateEquipUI } from './ui.js';
 import { RECIPES, canAfford, payCost, costHint } from './recipes.js';
 
 export function tryCraftSpear() {
-  if (state.player.hasSpear) {
+  if (hasItem('spear')) {
     tryEquipTool('spear');
     return;
   }
   if (canAfford(state.player, RECIPES.spear.cost)) {
     payCost(state.player, RECIPES.spear.cost);
-    state.player.hasSpear = true;
+    addItem('spear', 1);
     // Recién fabricada, queda directamente en la mano (mismo criterio que
     // hacha/pico). El bono de daño/alcance solo se aplica mientras está
     // equipada de verdad (ver tryAttack en player.js), no por tenerla
@@ -38,13 +38,13 @@ export function tryPlaceCampfire() {
 }
 
 export function tryCraftAxe() {
-  if (state.player.hasAxe) {
+  if (hasItem('axe')) {
     tryEquipTool('axe');
     return;
   }
   if (canAfford(state.player, RECIPES.axe.cost)) {
     payCost(state.player, RECIPES.axe.cost);
-    state.player.hasAxe = true;
+    addItem('axe', 1);
     // Recién fabricada, queda directamente en la mano.
     state.player.equippedTool = 'axe';
     SoundFX.craftOk();
@@ -57,13 +57,13 @@ export function tryCraftAxe() {
 }
 
 export function tryCraftPickaxe() {
-  if (state.player.hasPickaxe) {
+  if (hasItem('pickaxe')) {
     tryEquipTool('pickaxe');
     return;
   }
   if (canAfford(state.player, RECIPES.pickaxe.cost)) {
     payCost(state.player, RECIPES.pickaxe.cost);
-    state.player.hasPickaxe = true;
+    addItem('pickaxe', 1);
     // Recién fabricado, queda directamente en la mano.
     state.player.equippedTool = 'pickaxe';
     SoundFX.craftOk();
@@ -81,12 +81,10 @@ export function tryCraftPickaxe() {
 // crafteada, quedaba "puesta" para siempre sin poder sacársela). La mochila
 // sigue sin necesitarlo (se lleva puesta siempre). Volver a equipar la que
 // ya está en la mano la guarda.
-const TOOL_OWNED_KEY = { axe: 'hasAxe', pickaxe: 'hasPickaxe', spear: 'hasSpear' };
 const TOOL_LABEL = { axe: 'Hacha', pickaxe: 'Pico', spear: 'Lanza' };
 
 export function tryEquipTool(tool) {
-  const owned = state.player[TOOL_OWNED_KEY[tool]];
-  if (!owned) return;
+  if (!hasItem(tool)) return;
   if (state.player.equippedTool === tool) {
     state.player.equippedTool = null;
     SoundFX.equipClank();
@@ -101,13 +99,13 @@ export function tryEquipTool(tool) {
 }
 
 export function tryCraftBackpack() {
-  if (state.player.hasBackpack) {
+  if (hasItem('backpack')) {
     showHint('Ya tenés una mochila');
     return;
   }
   if (canAfford(state.player, RECIPES.backpack.cost)) {
     payCost(state.player, RECIPES.backpack.cost);
-    state.player.hasBackpack = true;
+    addItem('backpack', 1);
     SoundFX.craftOk();
     updateEquipUI();
     pushLog(`Fabricaste una mochila: capacidad +${BACKPACK_BONUS}`);

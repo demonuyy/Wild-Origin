@@ -1,4 +1,4 @@
-import { state, clamp, dist, DAY_LENGTH, invTotal, capFor, isNightPhase } from './config.js';
+import { state, clamp, dist, DAY_LENGTH, invTotal, capFor, isNightPhase, hasItem } from './config.js';
 import { pushLog, showHint, updateEquipUI, updateHUD, showInteractPrompt, hideInteractPrompt, isInventoryOpen } from './ui.js';
 import { SoundFX } from './audio.js';
 import { collectTreeResource, collectRockResource, collectBushResource, consumeBerry, collectStick, collectStone } from './inventory.js';
@@ -18,6 +18,15 @@ const SPEAR_RANGE = 50;
 const SPEAR_ATTACK_COOLDOWN = 0.5;
 const UNARMED_ATTACK_COOLDOWN = 0.7;
 
+// Cuánto bajan hambre/sed por segundo en reposo/caminando (se usa tanto en
+// el decaimiento normal de update() como al dormir en trySleep(), que
+// simula de un salto todo el tiempo hasta el amanecer).
+const HUNGER_DECAY_RATE = 0.42;
+const THIRST_DECAY_RATE = 0.55;
+// Mientras se corre (sprint con shift) hambre y sed bajan más rápido que
+// caminando o parado; NO aplica en trySleep() (dormir no es correr).
+const SPRINT_DECAY_MULT = 1.6;
+
 export function resetPlayer() {
   state.player.x = 0;
   state.player.y = 0;
@@ -27,13 +36,7 @@ export function resetPlayer() {
   state.player.stamina = 100;
   state.player.staminaCooldown = 0;
   state.player.staminaRegenDelay = 0;
-  state.player.wood = 0;
-  state.player.stone = 0;
-  state.player.berries = 0;
-  state.player.hasSpear = false;
-  state.player.hasAxe = false;
-  state.player.hasPickaxe = false;
-  state.player.hasBackpack = false;
+  state.player.inventory = [];
   state.player.equippedTool = null;
   state.player.attackDamage = 12;
   state.player.attackRange = 34;
@@ -171,8 +174,8 @@ export function trySleep() {
     return;
   }
   state.elapsed = nextDawn;
-  state.player.hunger = clamp(state.player.hunger - skip * 0.42, 0, 100);
-  state.player.thirst = clamp(state.player.thirst - skip * 0.55, 0, 100);
+  state.player.hunger = clamp(state.player.hunger - skip * HUNGER_DECAY_RATE, 0, 100);
+  state.player.thirst = clamp(state.player.thirst - skip * THIRST_DECAY_RATE, 0, 100);
   state.player.health = 100;
   state.player.stamina = 100;
   state.player.staminaCooldown = 0;
@@ -224,6 +227,10 @@ export function updatePlayer(dt) {
   if (state.keys['a'] || state.keys['arrowleft']) mx -= 1;
   if (state.keys['d'] || state.keys['arrowright']) mx += 1;
   const moved = mx !== 0 || my !== 0;
+  // Se usa más abajo también para el decaimiento de hambre/sed (correr
+  // desgasta más que caminar), por eso vive afuera del if(moved): si el
+  // jugador no se mueve, nunca está "corriendo".
+  let sprint = false;
   // Cooldown de energía: cuenta regresiva independiente de si el jugador se
   // mueve o no, para que corra siempre igual sin importar qué haga mientras
   // tanto.
@@ -246,7 +253,7 @@ export function updatePlayer(dt) {
     // Ya no alcanza con tener algo de energía: si el cooldown sigue activo
     // (arrancó al llegar a 0 la última vez), no se puede correr aunque la
     // energía se haya recuperado mientras tanto.
-    const sprint = state.keys['shift'] && player.stamina > 0 && player.staminaCooldown <= 0;
+    sprint = state.keys['shift'] && player.stamina > 0 && player.staminaCooldown <= 0;
     // Vadear una laguna pesa: se mueve a poco más de la mitad de velocidad,
     // tanto caminando como corriendo.
     const wading = isInWater(player.x, player.y);
@@ -276,8 +283,9 @@ export function updatePlayer(dt) {
     player.stamina = clamp(player.stamina + 9 * dt, 0, 100);
   }
 
-  player.hunger = clamp(player.hunger - 0.42 * dt, 0, 100);
-  player.thirst = clamp(player.thirst - 0.55 * dt, 0, 100);
+  const decayMult = sprint ? SPRINT_DECAY_MULT : 1;
+  player.hunger = clamp(player.hunger - HUNGER_DECAY_RATE * decayMult * dt, 0, 100);
+  player.thirst = clamp(player.thirst - THIRST_DECAY_RATE * decayMult * dt, 0, 100);
   if (player.hunger <= 0 || player.thirst <= 0) {
     player.health = clamp(player.health - 3.2 * dt, 0, 100);
   } else if (player.health < 100 && player.hunger > 55 && player.thirst > 55 && !isNightPhase((state.elapsed % DAY_LENGTH) / DAY_LENGTH)) {
@@ -288,7 +296,7 @@ export function updatePlayer(dt) {
 }
 
 export function handleManualEat() {
-  if (state.player.berries > 0) {
+  if (hasItem('berries')) {
     consumeBerry();
   } else {
     SoundFX.craftFail();

@@ -15,6 +15,27 @@ export const ZOOM_MIN = 0.8;
 export const ZOOM_MAX = 2.6;
 export const ZOOM_DEFAULT = 1.6;
 
+// Registro central de ítems. Antes cada material/herramienta vivía como un
+// campo suelto en state.player (player.wood, player.hasAxe, etc.) repetido
+// en crafting.js/inventory.js/ui.js/save.js. Ahora player.inventory es un
+// array de slots { id, qty } y ESTE es el único lugar que describe cómo se
+// llama, qué ícono tiene y cuánto se apila cada ítem. Agregar un ítem nuevo
+// (carne, hierro, etc. del roadmap v0.3+) es agregar una entrada acá.
+//
+// category:
+//  - 'resource' / 'food': se apilan hasta `stack` y cuentan para invTotal()/capFor().
+//  - 'tool': nunca se apilan (stack: 1), no ocupan capacidad de inventario
+//    (igual que antes: las herramientas nunca sumaban a invTotal()).
+export const ITEMS = {
+  wood: { label: 'Madera', icon: '🌲', stack: STACK_SIZE, category: 'resource' },
+  stone: { label: 'Piedra', icon: '🪨', stack: STACK_SIZE, category: 'resource' },
+  berries: { label: 'Bayas', icon: '🍓', stack: STACK_SIZE, category: 'food' },
+  spear: { label: 'Lanza', icon: '🔱', stack: 1, category: 'tool' },
+  axe: { label: 'Hacha', icon: '🪓', stack: 1, category: 'tool' },
+  pickaxe: { label: 'Pico', icon: '⛏️', stack: 1, category: 'tool' },
+  backpack: { label: 'Mochila', icon: '🎒', stack: 1, category: 'tool' }
+};
+
 // Guardado con `typeof document !== 'undefined'` para que este módulo se
 // pueda importar también desde Node (tests unitarios de crafting/inventory,
 // que no tocan el canvas) sin necesitar un navegador real. En el navegador
@@ -81,13 +102,11 @@ export const state = {
     // Se resetea a 4 cada vez que el jugador corre: mientras no llegue a 0,
     // la energía no se regenera (aunque ya se haya soltado shift/parado).
     staminaRegenDelay: 0,
-    wood: 0,
-    stone: 0,
-    berries: 0,
-    hasSpear: false,
-    hasAxe: false,
-    hasPickaxe: false,
-    hasBackpack: false,
+    // Ítems reales: array de slots { id, qty }, ver ITEMS más arriba para
+    // la metadata (label/icono/stack/categoría) de cada id posible. Antes
+    // esto eran campos sueltos (wood/stone/berries/hasAxe/...); usar
+    // addItem/removeItem/hasItem/countItem en vez de tocar este array a mano.
+    inventory: [],
     // Herramienta actualmente "en la mano" (null, 'axe' o 'pickaxe'). Tenerla
     // en la mano (no solo poseerla) es lo que habilita talar/minar.
     equippedTool: null,
@@ -116,12 +135,50 @@ export function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
-export function capFor() {
-  return BASE_CAP + (state.player.hasBackpack ? BACKPACK_BONUS : 0);
+// ---------- Inventario genérico ----------
+// Único lugar donde se lee/escribe player.inventory directamente; el resto
+// del código (crafting.js, inventory.js, player.js, recipes.js, ui.js) usa
+// estas funciones en vez de andar buscando el slot a mano.
+function findSlot(id) {
+  return state.player.inventory.find(s => s.id === id);
 }
 
+export function countItem(id) {
+  const slot = findSlot(id);
+  return slot ? slot.qty : 0;
+}
+
+export function hasItem(id) {
+  return countItem(id) > 0;
+}
+
+export function addItem(id, qty) {
+  if (qty <= 0) return;
+  const slot = findSlot(id);
+  if (slot) slot.qty += qty;
+  else state.player.inventory.push({ id, qty });
+}
+
+export function removeItem(id, qty) {
+  if (qty <= 0) return;
+  const slot = findSlot(id);
+  if (!slot) return;
+  slot.qty -= qty;
+  if (slot.qty <= 0) {
+    state.player.inventory = state.player.inventory.filter(s => s !== slot);
+  }
+}
+
+export function capFor() {
+  return BASE_CAP + (hasItem('backpack') ? BACKPACK_BONUS : 0);
+}
+
+// Solo cuenta ítems "pesados" (resource/food) contra la capacidad, igual que
+// antes (las herramientas nunca ocuparon capacidad de inventario).
 export function invTotal() {
-  return state.player.wood + state.player.stone + state.player.berries;
+  return state.player.inventory
+    .filter(s => ITEMS[s.id] && ITEMS[s.id].category !== 'tool')
+    .reduce((sum, s) => sum + s.qty, 0);
 }
 
 export function isNightPhase(phase) {

@@ -4,7 +4,7 @@
 // está atado a resetGame()/continueGame(), que son funciones locales de ese
 // módulo; separarlas hubiese significado pasar varios callbacks de un lado a
 // otro sin ganar mucha claridad a cambio.
-import { state, canvas, ZOOM_MIN, ZOOM_MAX, clamp } from './config.js';
+import { state, canvas, ZOOM_MIN, ZOOM_MAX, clamp, hasItem } from './config.js';
 import { SoundFX } from './audio.js';
 import { tryInteract, tryAttack, handleManualEat } from './player.js';
 import { tryCraftSpear, tryPlaceCampfire, tryCraftAxe, tryCraftPickaxe, tryCraftBackpack, tryPlaceShelter, tryEquipTool } from './crafting.js';
@@ -18,8 +18,8 @@ export function bindControls() {
     if (e.key === ' ') tryAttack();
     if (e.key === '1') tryCraftSpear();
     if (e.key === '2') tryPlaceCampfire();
-    if (e.key === '3') { if (state.player.hasAxe) tryEquipTool('axe'); else tryCraftAxe(); }
-    if (e.key === '4') { if (state.player.hasPickaxe) tryEquipTool('pickaxe'); else tryCraftPickaxe(); }
+    if (e.key === '3') { if (hasItem('axe')) tryEquipTool('axe'); else tryCraftAxe(); }
+    if (e.key === '4') { if (hasItem('pickaxe')) tryEquipTool('pickaxe'); else tryCraftPickaxe(); }
     if (e.key === '5') tryCraftBackpack();
     if (e.key === '6') tryPlaceShelter();
   });
@@ -49,8 +49,8 @@ export function bindControls() {
   const HOTBAR_ACTIONS = {
     spear: tryCraftSpear,
     campfire: tryPlaceCampfire,
-    axe: () => { if (state.player.hasAxe) tryEquipTool('axe'); else tryCraftAxe(); },
-    pickaxe: () => { if (state.player.hasPickaxe) tryEquipTool('pickaxe'); else tryCraftPickaxe(); },
+    axe: () => { if (hasItem('axe')) tryEquipTool('axe'); else tryCraftAxe(); },
+    pickaxe: () => { if (hasItem('pickaxe')) tryEquipTool('pickaxe'); else tryCraftPickaxe(); },
     backpack: tryCraftBackpack,
     shelter: tryPlaceShelter
   };
@@ -74,11 +74,11 @@ export function bindControls() {
       if (!state.running || state.gameOver || state.paused) return;
       const type = e.dataTransfer.getData('text/plain');
       const action = el.dataset.action;
-      if (action === 'spear' && type === 'spear' && state.player.hasSpear) {
+      if (action === 'spear' && type === 'spear' && hasItem('spear')) {
         tryEquipTool('spear');
-      } else if (action === 'axe' && type === 'axe' && state.player.hasAxe) {
+      } else if (action === 'axe' && type === 'axe' && hasItem('axe')) {
         tryEquipTool('axe');
-      } else if (action === 'pickaxe' && type === 'pickaxe' && state.player.hasPickaxe) {
+      } else if (action === 'pickaxe' && type === 'pickaxe' && hasItem('pickaxe')) {
         tryEquipTool('pickaxe');
       } else {
         SoundFX.craftFail();

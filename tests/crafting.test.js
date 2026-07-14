@@ -1,7 +1,7 @@
 import './helpers/dom-shim.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { state, BASE_CAP, BACKPACK_BONUS, capFor } from '../js/config.js';
+import { state, BASE_CAP, BACKPACK_BONUS, capFor, addItem, countItem, hasItem } from '../js/config.js';
 import { resetState } from './helpers/reset-state.js';
 import {
   tryCraftSpear,
@@ -12,64 +12,79 @@ import {
   tryPlaceShelter,
   tryEquipTool
 } from '../js/crafting.js';
+import { tryAttack } from '../js/player.js';
 
-test('tryCraftSpear cobra exactamente 4 madera y 2 piedra, y mejora el ataque', () => {
+test('tryCraftSpear cobra exactamente 4 madera y 2 piedra, y la deja lista en la mano', () => {
   resetState();
-  state.player.wood = 4;
-  state.player.stone = 2;
+  addItem('wood', 4);
+  addItem('stone', 2);
   tryCraftSpear();
-  assert.equal(state.player.hasSpear, true);
-  assert.equal(state.player.wood, 0);
-  assert.equal(state.player.stone, 0);
-  assert.equal(state.player.attackDamage, 26);
-  assert.equal(state.player.attackRange, 46);
+  assert.equal(hasItem('spear'), true);
+  assert.equal(state.player.equippedTool, 'spear');
+  assert.equal(countItem('wood'), 0);
+  assert.equal(countItem('stone'), 0);
+});
+
+test('la lanza equipada pega más fuerte que a mano limpia', () => {
+  resetState();
+  addItem('wood', 4);
+  addItem('stone', 2);
+  tryCraftSpear(); // tryCraftSpear ya la deja equipada
+  const wolf = { x: 0, y: 0, health: 100 };
+  state.wolves.push(wolf);
+  tryAttack();
+  assert.equal(wolf.health, 100 - 26, 'la lanza hace 26 de daño (ver SPEAR_DAMAGE en player.js)');
 });
 
 test('tryCraftSpear no cobra recursos si faltan', () => {
   resetState();
-  state.player.wood = 3; // falta 1 de madera
-  state.player.stone = 2;
+  addItem('wood', 3); // falta 1 de madera
+  addItem('stone', 2);
   tryCraftSpear();
-  assert.equal(state.player.hasSpear, false);
-  assert.equal(state.player.wood, 3);
-  assert.equal(state.player.stone, 2);
+  assert.equal(hasItem('spear'), false);
+  assert.equal(countItem('wood'), 3);
+  assert.equal(countItem('stone'), 2);
 });
 
-test('tryCraftSpear no vuelve a cobrar si ya se tiene una lanza', () => {
+test('tryCraftSpear ya poseída equivale a alternar equipar/guardar (no vuelve a cobrar)', () => {
   resetState();
-  state.player.hasSpear = true;
-  state.player.wood = 10;
-  tryCraftSpear();
-  assert.equal(state.player.wood, 10);
+  addItem('spear', 1);
+  state.player.equippedTool = 'spear';
+  addItem('wood', 10);
+  tryCraftSpear(); // debería guardarla (dejar las manos libres), no cobrar de nuevo
+  assert.equal(state.player.equippedTool, null);
+  assert.equal(countItem('wood'), 10);
+  tryCraftSpear(); // debería volver a ponerla en la mano
+  assert.equal(state.player.equippedTool, 'spear');
 });
 
 test('tryCraftAxe deja el hacha equipada en la mano apenas se craftea', () => {
   resetState();
-  state.player.wood = 5;
-  state.player.stone = 3;
+  addItem('wood', 5);
+  addItem('stone', 3);
   tryCraftAxe();
-  assert.equal(state.player.hasAxe, true);
+  assert.equal(hasItem('axe'), true);
   assert.equal(state.player.equippedTool, 'axe');
-  assert.equal(state.player.wood, 0);
-  assert.equal(state.player.stone, 0);
+  assert.equal(countItem('wood'), 0);
+  assert.equal(countItem('stone'), 0);
 });
 
 test('tryCraftPickaxe requiere 5 madera y 3 piedra, igual que el hacha', () => {
   resetState();
-  state.player.wood = 4; // falta 1
-  state.player.stone = 3;
+  addItem('wood', 4); // falta 1
+  addItem('stone', 3);
   tryCraftPickaxe();
-  assert.equal(state.player.hasPickaxe, false);
+  assert.equal(hasItem('pickaxe'), false);
 
-  state.player.wood = 5;
+  addItem('wood', 1);
   tryCraftPickaxe();
-  assert.equal(state.player.hasPickaxe, true);
+  assert.equal(hasItem('pickaxe'), true);
   assert.equal(state.player.equippedTool, 'pickaxe');
 });
 
 test('tryCraftAxe ya poseída equivale a alternar equipar/guardar', () => {
   resetState();
-  state.player.hasAxe = true;
+  addItem('axe', 1);
   state.player.equippedTool = 'axe';
   tryCraftAxe(); // debería guardarla (dejar las manos libres)
   assert.equal(state.player.equippedTool, null);
@@ -85,8 +100,8 @@ test('tryEquipTool no hace nada si la herramienta no fue crafteada todavía', ()
 
 test('equipar el hacha no afecta si el pico está en la mano (y viceversa)', () => {
   resetState();
-  state.player.hasAxe = true;
-  state.player.hasPickaxe = true;
+  addItem('axe', 1);
+  addItem('pickaxe', 1);
   tryEquipTool('axe');
   assert.equal(state.player.equippedTool, 'axe');
   tryEquipTool('pickaxe');
@@ -95,36 +110,36 @@ test('equipar el hacha no afecta si el pico está en la mano (y viceversa)', () 
 
 test('tryPlaceCampfire coloca la fogata en la posición actual del jugador', () => {
   resetState();
-  state.player.wood = 6;
+  addItem('wood', 6);
   state.player.x = 120;
   state.player.y = -40;
   tryPlaceCampfire();
   assert.equal(state.campfires.length, 1);
   assert.equal(state.campfires[0].x, 120);
   assert.equal(state.campfires[0].y, -40);
-  assert.equal(state.player.wood, 0);
+  assert.equal(countItem('wood'), 0);
 });
 
 test('tryCraftBackpack aumenta la capacidad efectiva vía capFor()', () => {
   resetState();
   assert.equal(capFor(), BASE_CAP);
-  state.player.wood = 8;
-  state.player.stone = 4;
+  addItem('wood', 8);
+  addItem('stone', 4);
   tryCraftBackpack();
-  assert.equal(state.player.hasBackpack, true);
+  assert.equal(hasItem('backpack'), true);
   assert.equal(capFor(), BASE_CAP + BACKPACK_BONUS);
 });
 
 test('tryPlaceShelter requiere 15 madera y 8 piedra', () => {
   resetState();
-  state.player.wood = 14;
-  state.player.stone = 8;
+  addItem('wood', 14);
+  addItem('stone', 8);
   tryPlaceShelter();
   assert.equal(state.shelters.length, 0);
 
-  state.player.wood = 15;
+  addItem('wood', 1);
   tryPlaceShelter();
   assert.equal(state.shelters.length, 1);
-  assert.equal(state.player.wood, 0);
-  assert.equal(state.player.stone, 0);
+  assert.equal(countItem('wood'), 0);
+  assert.equal(countItem('stone'), 0);
 });

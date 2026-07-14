@@ -1,3 +1,5 @@
+import { countItem, removeItem } from './config.js';
+
 // Tabla central de recetas de crafteo.
 //
 // Antes cada costo (madera/piedra) vivía duplicado en dos lugares: la
@@ -17,13 +19,15 @@ export const RECIPES = {
   shelter: { label: 'Refugio', cost: { wood: 15, stone: 8 } }
 };
 
+// `player` ya no se usa acá (el inventario es global en config.js), se deja
+// el parámetro para no tener que tocar los call sites en crafting.js. Las
+// claves de `cost` (wood, stone) son directamente ids de ITEMS.
 export function canAfford(player, cost) {
-  return player.wood >= cost.wood && player.stone >= cost.stone;
+  return Object.entries(cost).every(([id, qty]) => countItem(id) >= qty);
 }
 
 export function payCost(player, cost) {
-  player.wood -= cost.wood;
-  player.stone -= cost.stone;
+  Object.entries(cost).forEach(([id, qty]) => removeItem(id, qty));
 }
 
 // Arma el texto "<b>Lanza:</b> Necesitás 4 madera y 2 piedra" a partir de la

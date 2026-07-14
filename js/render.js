@@ -1,7 +1,7 @@
 // Todo lo que dibuja en pantalla (antes vivía adentro de game.js, mezclado
 // con el bucle principal y el binding de controles). game.js ahora solo
 // llama a render() una vez por frame.
-import { state, ctx, canvas, DAY_LENGTH, ZOOM_MIN, ZOOM_DEFAULT, clamp } from './config.js';
+import { state, ctx, canvas, DAY_LENGTH, ZOOM_MIN, ZOOM_DEFAULT, clamp, hasItem } from './config.js';
 import { SoundFX } from './audio.js';
 import { drawGround, drawGrassDecor, drawBloodDecals, drawPonds, drawRippleDecals, drawTree, drawRock, drawBush, drawStick, drawStone } from './world.js';
 import { drawDeer } from './animals.js';
@@ -82,7 +82,7 @@ function drawPlayer(cam) {
   // revés (le da la espalda a la cámara), así que tiene que quedar POR
   // ENCIMA del torso o si no, antes quedaba completamente oculta (bug).
   function drawBackpack() {
-    if (!player.hasBackpack) return;
+    if (!hasItem('backpack')) return;
     const bpX = sx - player.dir.x * 7;
     const bpY = sy - player.dir.y * 7 + 3;
     ctx.fillStyle = '#4a3826';
