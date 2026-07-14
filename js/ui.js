@@ -8,15 +8,28 @@ let hintTimeout = null;
 // (la validación real de recursos sigue viviendo en crafting.js). Los
 // números de costo salen de recipes.js: acá solo se agrega la metadata que
 // es específica de esta pantalla (qué flag de state.player indica "ya lo
-// tengo" y, para hacha/pico, qué valor de equippedTool corresponde).
+// tengo", para lanza/hacha/pico qué valor de equippedTool corresponde, y el
+// icono/tecla que también reutiliza el menú de crafteo completo (tecla C,
+// ver toggleCraftMenu más abajo) para no repetir esta tabla dos veces.
 const HOTBAR_CONFIG = {
-  spear: { ...RECIPES.spear.cost, ownedKey: 'hasSpear' },
-  campfire: { ...RECIPES.campfire.cost, ownedKey: null },
-  axe: { ...RECIPES.axe.cost, ownedKey: 'hasAxe', equipKey: 'axe' },
-  pickaxe: { ...RECIPES.pickaxe.cost, ownedKey: 'hasPickaxe', equipKey: 'pickaxe' },
-  backpack: { ...RECIPES.backpack.cost, ownedKey: 'hasBackpack' },
-  shelter: { ...RECIPES.shelter.cost, ownedKey: null }
+  spear: { ...RECIPES.spear.cost, ownedKey: 'hasSpear', equipKey: 'spear', icon: '🔱', key: '1' },
+  campfire: { ...RECIPES.campfire.cost, ownedKey: null, icon: '🔥', key: '2' },
+  axe: { ...RECIPES.axe.cost, ownedKey: 'hasAxe', equipKey: 'axe', icon: '🪓', key: '3' },
+  pickaxe: { ...RECIPES.pickaxe.cost, ownedKey: 'hasPickaxe', equipKey: 'pickaxe', icon: '⛏️', key: '4' },
+  backpack: { ...RECIPES.backpack.cost, ownedKey: 'hasBackpack', icon: '🎒', key: '5' },
+  shelter: { ...RECIPES.shelter.cost, ownedKey: null, icon: '⛺', key: '6' }
 };
+
+// Estado compartido (poseído / se puede craftear ahora / equipado) de una
+// entrada de HOTBAR_CONFIG, usado tanto por updateHotbar() como por el menú
+// de crafteo completo, para que ambos coincidan siempre.
+function craftSlotStatus(action) {
+  const cfg = HOTBAR_CONFIG[action];
+  const owned = !!(cfg.ownedKey && state.player[cfg.ownedKey]);
+  const affordable = state.player.wood >= cfg.wood && state.player.stone >= cfg.stone;
+  const equipped = !!(cfg.equipKey && state.player.equippedTool === cfg.equipKey);
+  return { cfg, owned, affordable, equipped };
+}
 
 export function pushLog(msg) {
   const logEl = document.getElementById('log');
@@ -65,23 +78,79 @@ export function hideInteractPrompt() {
 export function updateHotbar() {
   const slots = document.querySelectorAll('#hotbar .hotSlot[data-action]');
   slots.forEach(el => {
-    const cfg = HOTBAR_CONFIG[el.dataset.action];
-    if (!cfg) return;
-    const owned = cfg.ownedKey && state.player[cfg.ownedKey];
-    const affordable = state.player.wood >= cfg.wood && state.player.stone >= cfg.stone;
-    const equipped = cfg.equipKey && state.player.equippedTool === cfg.equipKey;
-    el.classList.toggle('owned', !!owned);
+    if (!HOTBAR_CONFIG[el.dataset.action]) return;
+    const { cfg, owned, affordable, equipped } = craftSlotStatus(el.dataset.action);
+    el.classList.toggle('owned', owned);
     el.classList.toggle('affordable', !owned && affordable);
     el.classList.toggle('disabled', !owned && !affordable);
     // Hacha/pico: además de "poseído" importa si están en la mano, ya que
     // eso es lo que habilita talar/minar.
-    el.classList.toggle('active', !!equipped);
+    el.classList.toggle('active', equipped);
     const costEl = el.querySelector('.hotCost');
     if (owned) {
       const label = cfg.equipKey ? (equipped ? 'En mano' : 'Guardado') : 'Equipado';
       if (costEl.textContent !== label) costEl.textContent = label;
     }
   });
+}
+
+// ---------- Menú de crafteo completo (tecla C) ----------
+// Muestra TODAS las recetas de RECIPES a la vez (a diferencia de la hotbar,
+// que ya las tiene siempre visibles pero mezcladas con el resto del HUD).
+// Se arma dinámicamente desde HOTBAR_CONFIG/RECIPES así que una receta nueva
+// (v0.3+: horno, arco...) aparece acá solo con agregarla a esas dos tablas,
+// sin tocar este archivo.
+function renderCraftGrid() {
+  const grid = document.getElementById('craftGrid');
+  grid.innerHTML = '';
+  for (const action of Object.keys(HOTBAR_CONFIG)) {
+    const { cfg, owned, affordable, equipped } = craftSlotStatus(action);
+    const el = document.createElement('div');
+    el.className = 'craftSlot';
+    el.dataset.action = action;
+    el.classList.toggle('owned', owned);
+    el.classList.toggle('affordable', !owned && affordable);
+    el.classList.toggle('disabled', !owned && !affordable);
+    el.classList.toggle('active', equipped);
+    const costParts = [];
+    if (cfg.wood) costParts.push(`${cfg.wood}🌲`);
+    if (cfg.stone) costParts.push(`${cfg.stone}🪨`);
+    const statusLabel = owned ? (cfg.equipKey ? (equipped ? 'En mano' : 'Guardado') : 'Equipado') : costParts.join(' ');
+    el.innerHTML = `<span class="craftIcon">${cfg.icon}</span>` +
+      `<span class="craftName">${RECIPES[action].label}</span>` +
+      `<span class="craftCost">${statusLabel}</span>` +
+      `<span class="craftKey">${cfg.key}</span>`;
+    grid.appendChild(el);
+  }
+}
+
+export function updateCraftMenu() {
+  renderCraftGrid();
+}
+
+export function isCraftMenuOpen() {
+  return document.getElementById('craftPanel').classList.contains('show');
+}
+
+export function toggleCraftMenu(force) {
+  if (!state.running || state.gameOver) return;
+  const el = document.getElementById('craftPanel');
+  const show = force !== undefined ? force : !el.classList.contains('show');
+  el.classList.toggle('show', show);
+  if (show) {
+    // Mismo criterio que toggleInventory(): un solo panel modal a la vez.
+    if (isInventoryOpen()) closeInventory();
+    updateCraftMenu();
+    SoundFX.bagOpen();
+  } else {
+    SoundFX.bagClose();
+  }
+}
+
+export function closeCraftMenu() {
+  const el = document.getElementById('craftPanel');
+  if (el.classList.contains('show')) SoundFX.bagClose();
+  el.classList.remove('show');
 }
 
 // ---------- Inventario en grilla (5 columnas x 2 filas = 10 slots) ----------
@@ -173,6 +242,7 @@ export function toggleInventory(force) {
   const show = force !== undefined ? force : !el.classList.contains('show');
   el.classList.toggle('show', show);
   if (show) {
+    if (isCraftMenuOpen()) closeCraftMenu();
     updateInventoryPanel();
     SoundFX.bagOpen();
   } else {
@@ -191,6 +261,7 @@ export function closeInventory() {
 export function updateEquipUI() {
   updateHotbar();
   if (isInventoryOpen()) updateInventoryPanel();
+  if (isCraftMenuOpen()) updateCraftMenu();
 }
 
 export function updateHUD() {
@@ -208,6 +279,7 @@ export function updateHUD() {
   document.getElementById('timeLabel').textContent = label;
   updateHotbar();
   if (isInventoryOpen()) updateInventoryPanel();
+  if (isCraftMenuOpen()) updateCraftMenu();
 }
 
 export function endGame() {
@@ -221,6 +293,7 @@ export function endGame() {
   document.getElementById('minimapWrap').classList.add('hidden');
   document.getElementById('hotbar').classList.add('hidden');
   closeInventory();
+  closeCraftMenu();
   document.getElementById('survivedText').textContent = `Sobreviviste ${state.dayCounter} día${state.dayCounter === 1 ? '' : 's'}`;
   document.getElementById('gameOver').style.display = 'block';
 }
@@ -230,6 +303,7 @@ export function openPause() {
   state.paused = true;
   SoundFX.setAmbientActive(false);
   closeInventory();
+  closeCraftMenu();
   hideInteractPrompt();
   document.getElementById('pauseMenu').style.display = 'block';
 }
@@ -276,6 +350,7 @@ export function goToMainMenu() {
   document.getElementById('minimapWrap').classList.add('hidden');
   document.getElementById('hotbar').classList.add('hidden');
   closeInventory();
+  closeCraftMenu();
   document.getElementById('title').classList.remove('hidden');
 }
 

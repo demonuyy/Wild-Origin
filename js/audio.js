@@ -9,7 +9,7 @@ const SAMPLE_FILES = {
   crunch: ['player/crunch.1.wav', 'player/crunch.2.wav', 'player/crunch.3.wav', 'player/crunch.4.wav', 'player/crunch.5.wav', 'player/crunch.6.wav', 'player/crunch.7.wav'],
   drink: ['player/drink_1.wav', 'player/drink_2.wav', 'player/drink_3.wav'],
   footstepGrass: ['player/footstep_grass_000.ogg', 'player/footstep_grass_001.ogg', 'player/footstep_grass_002.ogg', 'player/footstep_grass_003.ogg', 'player/footstep_grass_004.ogg'],
-  // Pasos del jugador al vadear una laguna (ver isInWater en player.js).
+  // Pasos del jugador al vadear una laguna (ver isInWater en world.js).
   footstepWater: ['player/splash_1.wav', 'player/splash_2.wav'],
   swish: ['player/swish-1.wav', 'player/swish-2.wav', 'player/swish-3.wav', 'player/swish-4.wav', 'player/swish-5.wav'],
   playerHurt: ['player/player_hurt_1.wav', 'player/player_hurt_2.wav', 'player/player_hurt_3.wav', 'player/player_hurt_4.wav'],
@@ -328,7 +328,7 @@ const SoundFX = (function () {
       }
     },
     // water: true mientras el jugador vadea una laguna (ver isInWater en
-    // player.js) — usa los splashes en vez del pasto normal.
+    // world.js) — usa los splashes en vez del pasto normal.
     footstep(intensity = 1, water = false) {
       if (water) {
         if (!playRandom('footstepWater', { vol: 0.28 * intensity, rateJitter: 0.1 })) {

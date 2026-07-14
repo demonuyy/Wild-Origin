@@ -5,17 +5,20 @@ import { RECIPES, canAfford, payCost, costHint } from './recipes.js';
 
 export function tryCraftSpear() {
   if (state.player.hasSpear) {
-    showHint('Ya tenés una lanza');
+    tryEquipTool('spear');
     return;
   }
   if (canAfford(state.player, RECIPES.spear.cost)) {
     payCost(state.player, RECIPES.spear.cost);
     state.player.hasSpear = true;
-    state.player.attackDamage = 26;
-    state.player.attackRange = 46;
-    updateEquipUI();
+    // Recién fabricada, queda directamente en la mano (mismo criterio que
+    // hacha/pico). El bono de daño/alcance solo se aplica mientras está
+    // equipada de verdad (ver tryAttack en player.js), no por tenerla
+    // craftada nomás.
+    state.player.equippedTool = 'spear';
     SoundFX.craftOk();
-    pushLog('Fabricaste una lanza');
+    updateEquipUI();
+    pushLog('Fabricaste una lanza: ya la tenés en la mano');
   } else {
     SoundFX.craftFail();
     showHint(costHint('spear'));
@@ -72,11 +75,17 @@ export function tryCraftPickaxe() {
   }
 }
 
-// Cambia qué herramienta está "en la mano". Solo el hacha y el pico compiten
-// por ese lugar (la lanza y la mochila no lo necesitan). Volver a equipar la
-// que ya está en la mano la guarda (deja las manos libres).
+// Cambia qué herramienta/arma está "en la mano". Antes solo competían por
+// ese lugar el hacha y el pico; ahora la lanza también, así que se puede
+// craftear y después guardarla para tener las manos libres (antes, una vez
+// crafteada, quedaba "puesta" para siempre sin poder sacársela). La mochila
+// sigue sin necesitarlo (se lleva puesta siempre). Volver a equipar la que
+// ya está en la mano la guarda.
+const TOOL_OWNED_KEY = { axe: 'hasAxe', pickaxe: 'hasPickaxe', spear: 'hasSpear' };
+const TOOL_LABEL = { axe: 'Hacha', pickaxe: 'Pico', spear: 'Lanza' };
+
 export function tryEquipTool(tool) {
-  const owned = tool === 'axe' ? state.player.hasAxe : state.player.hasPickaxe;
+  const owned = state.player[TOOL_OWNED_KEY[tool]];
   if (!owned) return;
   if (state.player.equippedTool === tool) {
     state.player.equippedTool = null;
@@ -87,7 +96,7 @@ export function tryEquipTool(tool) {
     state.player.equippedTool = tool;
     SoundFX.equipClank();
     updateEquipUI();
-    pushLog(tool === 'axe' ? 'Hacha en mano' : 'Pico en mano');
+    pushLog(`${TOOL_LABEL[tool]} en mano`);
   }
 }
 

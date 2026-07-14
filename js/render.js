@@ -3,7 +3,7 @@
 // llama a render() una vez por frame.
 import { state, ctx, canvas, DAY_LENGTH, ZOOM_MIN, ZOOM_DEFAULT, clamp } from './config.js';
 import { SoundFX } from './audio.js';
-import { drawGround, drawGrassDecor, drawBloodDecals, drawPonds, drawTree, drawRock, drawBush, drawStick, drawStone } from './world.js';
+import { drawGround, drawGrassDecor, drawBloodDecals, drawPonds, drawRippleDecals, drawTree, drawRock, drawBush, drawStick, drawStone } from './world.js';
 import { drawDeer } from './animals.js';
 import { drawWolf } from './enemies.js';
 import { drawCampfire, drawShelter } from './building.js';
@@ -62,7 +62,7 @@ function drawPlayer(cam) {
   const perpX = -player.dir.y;
   const perpY = player.dir.x;
   const armSwing = moving ? Math.sin(state.elapsed * 10) * 4 : 0;
-  const hasTool = player.hasSpear || player.equippedTool === 'axe' || player.equippedTool === 'pickaxe';
+  const hasTool = player.equippedTool === 'spear' || player.equippedTool === 'axe' || player.equippedTool === 'pickaxe';
   // Contorno oscuro fino aplicado a casi todas las piezas: es lo que hace
   // que el personaje se lea con claridad contra el pasto/fondo, en vez de
   // mezclarse con los colores del mundo como pasaba antes.
@@ -73,10 +73,16 @@ function drawPlayer(cam) {
   ctx.ellipse(sx, player.y - cam.y + 15, 12, 5, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Mochila: ahora se ancla detrás del jugador (lado opuesto a hacia donde
-  // mira) en vez de a un costado fijo, así no queda "flotando" rara cuando
-  // el jugador cambia de dirección.
-  if (player.hasBackpack) {
+  // Mochila: se ancla detrás del jugador (lado opuesto a hacia donde mira)
+  // en vez de a un costado fijo, así no queda "flotando" rara cuando el
+  // jugador cambia de dirección. Es una función (no se llama acá todavía)
+  // porque en qué capa se dibuja depende de hacia dónde mira: mirando hacia
+  // abajo/costado el jugador da la espalda al fondo de la pantalla, así que
+  // el torso tiene que taparla como corresponde; mirando hacia arriba es al
+  // revés (le da la espalda a la cámara), así que tiene que quedar POR
+  // ENCIMA del torso o si no, antes quedaba completamente oculta (bug).
+  function drawBackpack() {
+    if (!player.hasBackpack) return;
     const bpX = sx - player.dir.x * 7;
     const bpY = sy - player.dir.y * 7 + 3;
     ctx.fillStyle = '#4a3826';
@@ -87,6 +93,11 @@ function drawPlayer(cam) {
     ctx.fill();
     ctx.stroke();
   }
+  // Mirando hacia el norte (arriba) se ve la nuca: mismo criterio que usa
+  // más abajo el pelo/cara de la cabeza, calculado acá arriba para poder
+  // decidir la capa de la mochila.
+  const facingNorth = player.dir.y < -0.5;
+  if (!facingNorth) drawBackpack();
 
   // ---- Piernas ----
   // Se dibujan antes que el torso para que la cadera quede tapada por él y
@@ -236,6 +247,13 @@ function drawPlayer(cam) {
   ctx.closePath();
   ctx.fill();
 
+  // Mirando hacia arriba el jugador le da la espalda a la cámara: acá
+  // (recién tapado el torso) es donde la mochila tiene que quedar por
+  // encima para que se vea, a diferencia del resto de las direcciones
+  // (dibujada más arriba, antes del torso, para que quede tapada como
+  // corresponde cuando se ve de frente/costado).
+  if (facingNorth) drawBackpack();
+
   // ---- Cabeza ----
   ctx.fillStyle = OUTLINE;
   ctx.beginPath();
@@ -254,8 +272,6 @@ function drawPlayer(cam) {
   // el pelo cubre toda la cabeza y no se dibujan ojos. En cualquier otra
   // dirección se ve un casquete de pelo solo del lado de atrás, y la cara
   // (ojos) del lado hacia donde camina.
-  const facingNorth = player.dir.y < -0.5;
-
   if (facingNorth) {
     ctx.fillStyle = '#3a2a1a';
     ctx.beginPath();
@@ -296,17 +312,73 @@ function drawPlayer(cam) {
     drawArm(1, activeHandX, activeHandY);
   }
 
-  if (player.hasSpear) {
-    ctx.strokeStyle = '#c9a86a';
-    ctx.lineWidth = 3;
+  // Lanza "en la mano": antes era solo una línea recta con un puntito gris
+  // al final. Ahora tiene asta con veta de madera (mismo recurso de
+  // contorno oscuro + color claro encima que usan brazos/piernas), una
+  // atadura de cuero sujetando la punta, y una punta de piedra en forma de
+  // hoja en vez de un círculo plano.
+  if (player.equippedTool === 'spear') {
+    const dx = player.dir.x, dy = player.dir.y;
+    const perpSpX = -dy, perpSpY = dx;
+    const baseX = sx + dx * 4, baseY = sy + dy * 4;
+    const tipX = sx + dx * 33, tipY = sy + dy * 33;
+
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 4.2;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(sx + player.dir.x * 4, sy + player.dir.y * 4);
-    ctx.lineTo(sx + player.dir.x * 34, sy + player.dir.y * 34);
+    ctx.moveTo(baseX, baseY);
+    ctx.lineTo(tipX, tipY);
     ctx.stroke();
-    ctx.fillStyle = '#e4e4dc';
+    const shaftG = ctx.createLinearGradient(baseX, baseY, tipX, tipY);
+    shaftG.addColorStop(0, '#5a3f24');
+    shaftG.addColorStop(1, '#8a6238');
+    ctx.strokeStyle = shaftG;
+    ctx.lineWidth = 2.4;
     ctx.beginPath();
-    ctx.arc(sx + player.dir.x * 36, sy + player.dir.y * 36, 3, 0, Math.PI * 2);
+    ctx.moveTo(baseX, baseY);
+    ctx.lineTo(tipX, tipY);
+    ctx.stroke();
+
+    // Atadura de cuero justo antes de la punta, sujetando la piedra al asta.
+    const wrapX = sx + dx * 29, wrapY = sy + dy * 29;
+    ctx.strokeStyle = '#2e2015';
+    ctx.lineWidth = 1.4;
+    for (const off of [-2.2, 0, 2.2]) {
+      ctx.beginPath();
+      ctx.moveTo(wrapX + perpSpX * 2.4 + dx * off, wrapY + perpSpY * 2.4 + dy * off);
+      ctx.lineTo(wrapX - perpSpX * 2.4 + dx * off, wrapY - perpSpY * 2.4 + dy * off);
+      ctx.stroke();
+    }
+
+    // Punta: hoja de piedra tallada, no un círculo. Contorno oscuro atrás y
+    // gradiente clara encima para que se note el filo.
+    const headBaseX = sx + dx * 31, headBaseY = sy + dy * 31;
+    const headTipX = sx + dx * 43, headTipY = sy + dy * 43;
+    ctx.fillStyle = OUTLINE;
+    ctx.beginPath();
+    ctx.moveTo(headBaseX + perpSpX * 4, headBaseY + perpSpY * 4);
+    ctx.lineTo(headTipX, headTipY);
+    ctx.lineTo(headBaseX - perpSpX * 4, headBaseY - perpSpY * 4);
+    ctx.closePath();
     ctx.fill();
+    const headG = ctx.createLinearGradient(headBaseX, headBaseY, headTipX, headTipY);
+    headG.addColorStop(0, '#8f8d82');
+    headG.addColorStop(1, '#eeeee6');
+    ctx.fillStyle = headG;
+    ctx.beginPath();
+    ctx.moveTo(headBaseX + perpSpX * 3, headBaseY + perpSpY * 3);
+    ctx.lineTo(headTipX, headTipY);
+    ctx.lineTo(headBaseX - perpSpX * 3, headBaseY - perpSpY * 3);
+    ctx.closePath();
+    ctx.fill();
+    // Nervadura central: una línea clara que marca el filo a lo largo de la hoja.
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(headBaseX, headBaseY);
+    ctx.lineTo(headTipX, headTipY);
+    ctx.stroke();
   }
   // Hacha o pico "en la mano": solo se dibuja si esa es la herramienta activa,
   // para que se note a simple vista que el jugador puede talar o minar ahora mismo.
@@ -392,6 +464,7 @@ export function render() {
   drawGrassDecor(ctx, cam, viewW, viewH);
   drawBloodDecals(ctx, cam, viewW, viewH);
   drawPonds(ctx, cam, viewW, viewH);
+  drawRippleDecals(ctx, cam, viewW, viewH);
 
   // Se descarta lo que quedó fuera de pantalla ANTES de armar el array a ordenar
   // (antes se armaba con TODO lo cargado en los chunks vecinos y se filtraba
@@ -455,17 +528,9 @@ export function render() {
     mctx.globalCompositeOperation = 'destination-out';
     // Posiciones y radios en espacio de pantalla real: hay que multiplicar por el zoom
     // porque el mundo se dibujó escalado, pero esta máscara no.
-    const px = (state.player.x - cam.x) * zoom;
-    const py = (state.player.y - cam.y) * zoom;
-    const playerR = 200 * zoom;
-    let rg = mctx.createRadialGradient(px, py, 10 * zoom, px, py, playerR);
-    rg.addColorStop(0, 'rgba(0,0,0,1)');
-    rg.addColorStop(0.6, 'rgba(0,0,0,0.65)');
-    rg.addColorStop(1, 'rgba(0,0,0,0)');
-    mctx.fillStyle = rg;
-    mctx.beginPath();
-    mctx.arc(px, py, playerR, 0, Math.PI * 2);
-    mctx.fill();
+    // El jugador NO emite luz propia (no tiene antorcha ni nada que ilumine):
+    // de noche, la única fuente de visibilidad es el fuego de las fogatas,
+    // de acá para abajo. Sin una cerca, queda a oscuras.
     for (const f of state.campfires) {
       const fx = (f.x - cam.x) * zoom;
       const fy = (f.y - cam.y) * zoom;

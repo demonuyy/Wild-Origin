@@ -141,4 +141,25 @@
   /* Slot de la hotbar recibiendo un item arrastrado desde el inventario. */
   .hotSlot.dragOver{border-color:rgba(255,224,120,.95);box-shadow:0 0 12px rgba(255,224,120,.6);}
 
+  /* Menú de crafteo completo (tecla C): lista vertical con TODAS las
+     recetas, a diferencia de la hotbar que ya las muestra pero mezcladas
+     con el resto del HUD. Reusa la misma semántica de color que .hotSlot
+     (dorado = se puede craftear ahora, verde = ya lo tenés, ámbar = en mano). */
+  #craftPanel{top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;display:none;background:rgba(10,18,12,.92);border:1px solid rgba(203,216,195,.25);border-radius:10px;padding:24px 28px;min-width:300px;text-align:center;}
+  #craftPanel.show{display:block;pointer-events:auto;}
+  #craftPanelHeader{font-size:17px;letter-spacing:2px;text-transform:uppercase;margin-bottom:16px;color:var(--mist);}
+  .craftGrid{display:flex;flex-direction:column;gap:8px;margin-bottom:4px;min-width:260px;}
+  .craftSlot{position:relative;display:flex;align-items:center;gap:12px;padding:9px 34px 9px 14px;background:rgba(203,216,195,.06);border:1px solid rgba(203,216,195,.2);border-radius:6px;cursor:pointer;text-align:left;transition:background .15s ease,border-color .15s ease,box-shadow .15s ease;}
+  .craftSlot:hover{background:rgba(203,216,195,.14);}
+  .craftSlot.affordable{border-color:rgba(255,184,92,.65);box-shadow:0 0 8px rgba(255,184,92,.25);}
+  .craftSlot.owned{border-color:rgba(140,175,110,.75);background:rgba(60,90,50,.3);cursor:default;}
+  .craftSlot.disabled{opacity:.42;cursor:default;}
+  .craftSlot.disabled:hover{background:rgba(203,216,195,.06);}
+  .craftSlot.active{border-color:rgba(255,224,120,.9);background:rgba(120,95,40,.35);box-shadow:0 0 10px rgba(255,224,120,.45);cursor:pointer;}
+  .craftSlot.active:hover{background:rgba(120,95,40,.5);}
+  .craftIcon{font-size:20px;line-height:1;}
+  .craftName{flex:1;font-size:13px;letter-spacing:.3px;color:var(--mist);}
+  .craftCost{font-size:11px;opacity:.85;white-space:nowrap;}
+  .craftKey{position:absolute;top:5px;right:8px;font-size:9px;opacity:.6;letter-spacing:.5px;}
+
   .hidden{display:none !important;}

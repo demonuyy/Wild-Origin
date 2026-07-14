@@ -1,6 +1,6 @@
 import { state, rand, dist } from './config.js';
 import { SoundFX } from './audio.js';
-import { removeEntity, spawnBlood } from './world.js';
+import { removeEntity, spawnBlood, maybeSpawnWaterRipple } from './world.js';
 import { pushLog } from './ui.js';
 
 // Radio dentro del cual el pánico de un ciervo asusta a los demás (manada).
@@ -68,6 +68,7 @@ export function updateDeer(dt) {
       const ang = baseAng + (d.wobble || (d.wobble = rand(-0.5, 0.5)));
       d.x += Math.cos(ang) * d.speed * 1.5 * dt;
       d.y += Math.sin(ang) * d.speed * 1.5 * dt;
+      maybeSpawnWaterRipple(d, dt);
       d.footstepTimer = (d.footstepTimer || 0) - dt;
       if (d.footstepTimer <= 0) {
         SoundFX.footstepAnimal(d.x, d.y, 1.1);
@@ -110,6 +111,7 @@ export function updateDeer(dt) {
         const ang = Math.atan2(d.wanderTarget.y - d.y, d.wanderTarget.x - d.x);
         d.x += Math.cos(ang) * d.speed * 0.4 * dt;
         d.y += Math.sin(ang) * d.speed * 0.4 * dt;
+        maybeSpawnWaterRipple(d, dt);
       }
     }
   }

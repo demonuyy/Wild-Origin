@@ -2,10 +2,21 @@ import { state, clamp, dist, DAY_LENGTH, invTotal, capFor, isNightPhase } from '
 import { pushLog, showHint, updateEquipUI, updateHUD, showInteractPrompt, hideInteractPrompt, isInventoryOpen } from './ui.js';
 import { SoundFX } from './audio.js';
 import { collectTreeResource, collectRockResource, collectBushResource, consumeBerry, collectStick, collectStone } from './inventory.js';
-import { removeEntity, spawnBlood } from './world.js';
+import { removeEntity, spawnBlood, spawnRipple, isInWater } from './world.js';
 import { hitDeer } from './animals.js';
 
 let footstepTimer = 0;
+
+// Bonos de la lanza: antes se aplicaban de forma PERMANENTE apenas se
+// crafteaba (mutando attackDamage/attackRange para siempre, sin poder
+// guardarla) y además el alcance se sumaba dos veces: crafting.js subía
+// attackRange a 46 y tryAttack le sumaba otros +18 encima. Ahora solo se
+// aplican mientras está equipada de verdad (equippedTool === 'spear'),
+// igual que hacha/pico solo cortan/minan si están en la mano.
+const SPEAR_DAMAGE = 26;
+const SPEAR_RANGE = 50;
+const SPEAR_ATTACK_COOLDOWN = 0.5;
+const UNARMED_ATTACK_COOLDOWN = 0.7;
 
 export function resetPlayer() {
   state.player.x = 0;
@@ -172,13 +183,15 @@ export function trySleep() {
 
 export function tryAttack() {
   if (state.player.attackCooldown > 0) return;
-  state.player.attackCooldown = state.player.hasSpear ? 0.5 : 0.7;
+  const wielding = state.player.equippedTool === 'spear';
+  state.player.attackCooldown = wielding ? SPEAR_ATTACK_COOLDOWN : UNARMED_ATTACK_COOLDOWN;
   SoundFX.attackSwing();
-  const range = state.player.attackRange + (state.player.hasSpear ? 18 : 0);
+  const range = wielding ? SPEAR_RANGE : state.player.attackRange;
+  const damage = wielding ? SPEAR_DAMAGE : state.player.attackDamage;
   let hitSomething = false;
   for (const w of state.wolves) {
     if (dist(state.player.x, state.player.y, w.x, w.y) < range) {
-      w.health -= state.player.attackDamage;
+      w.health -= damage;
       w.knockX = w.x - state.player.x;
       w.knockY = w.y - state.player.y;
       hitSomething = true;
@@ -194,21 +207,11 @@ export function tryAttack() {
   }
   for (const d of state.deer) {
     if (dist(state.player.x, state.player.y, d.x, d.y) < range) {
-      hitDeer(d, state.player.attackDamage);
+      hitDeer(d, damage);
       hitSomething = true;
     }
   }
   if (hitSomething) pushLog('¡Golpe certero!');
-}
-
-// Devuelve true si (x,y) cae dentro del óvalo de una laguna (no del halo de
-// orilla, la forma real de agua). La usa updatePlayer() para frenar al jugador.
-function isInWater(x, y) {
-  return state.ponds.some(p => {
-    const dx = (x - p.x) / p.rw;
-    const dy = (y - p.y) / p.rh;
-    return dx * dx + dy * dy < 1;
-  });
 }
 
 export function updatePlayer(dt) {
@@ -263,6 +266,7 @@ export function updatePlayer(dt) {
     footstepTimer -= dt;
     if (footstepTimer <= 0) {
       SoundFX.footstep(sprint ? 1.15 : 0.9, wading);
+      if (wading) spawnRipple(player.x, player.y + 14);
       footstepTimer = sprint ? 0.27 : 0.4;
     }
   } else {

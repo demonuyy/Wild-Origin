@@ -55,6 +55,10 @@ export const state = {
   // atadas a chunks como grassDecor: son efímeras (se van desvaneciendo
   // solas con updateBloodDecals) y no hace falta persistirlas al guardar.
   bloodDecals: [],
+  // Ondas al vadear una laguna, tanto del jugador como de los animales (ver
+  // isInWater/maybeSpawnWaterRipple en world.js). Mismo criterio que
+  // bloodDecals: efímeras, se desvanecen solas y no se persisten al guardar.
+  rippleDecals: [],
   // Palos y piedras sueltos, recolectables a mano sin ninguna herramienta.
   // Son el único recurso disponible hasta craftear hacha/pico, ya que talar
   // árboles y minar rocas requiere tener esa herramienta en la mano.

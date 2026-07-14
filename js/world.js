@@ -71,6 +71,7 @@ export function generateWorld() {
   state.deer = [];
   state.grassDecor = [];
   state.bloodDecals = [];
+  state.rippleDecals = [];
   state.sticks = [];
   state.stones = [];
   state.chunkStore = {};
@@ -371,6 +372,90 @@ export function drawBloodDecals(ctx, cam, viewW, viewH) {
     ctx.beginPath();
     ctx.ellipse(-b.r * 0.2, -b.r * 0.2, b.r * 0.4, b.r * 0.4 * b.squash, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
+  }
+}
+
+// Devuelve true si (x,y) cae dentro del óvalo de una laguna (no del halo de
+// orilla, la forma real de agua). Vive acá (junto con el resto de la lógica
+// de lagunas) porque tanto el jugador (updatePlayer, para frenarlo al vadear)
+// como los animales (updateDeer/updateWolves, para las ondas al cruzar el
+// agua) la necesitan.
+export function isInWater(x, y) {
+  return state.ponds.some(p => {
+    const dx = (x - p.x) / p.rw;
+    const dy = (y - p.y) / p.rh;
+    return dx * dx + dy * dy < 1;
+  });
+}
+
+// Genera una onda si (x,y) está en el agua, con una cadencia propia por
+// entidad (guardada en entity._rippleTimer) independiente de cualquier
+// timer de sonido/pasos que ya tenga esa entidad. Así cubre parejo tanto al
+// jugador como a ciervos/lobos sin duplicar esta lógica en cada uno.
+export function maybeSpawnWaterRipple(entity, dt) {
+  if (!isInWater(entity.x, entity.y)) {
+    entity._rippleTimer = 0;
+    return;
+  }
+  entity._rippleTimer = (entity._rippleTimer || 0) - dt;
+  if (entity._rippleTimer <= 0) {
+    spawnRipple(entity.x, entity.y + 6);
+    entity._rippleTimer = 0.32;
+  }
+}
+
+// ---------- Ondas al vadear el agua ----------
+// Se generan cuando el jugador camina dentro de una laguna (ver isInWater
+// y el cadenciador de footstep en updatePlayer, en player.js: usa el mismo
+// timer que ya dispara el sonido de chapoteo, así el anillo aparece
+// exactamente en cada "paso" dentro del agua). Mismo patrón que las
+// manchas de sangre de arriba: no atadas a chunks, se desvanecen solas y
+// no se persisten al guardar.
+const RIPPLE_MAX = 40;
+
+function makeRipple(x, y) {
+  const life = rand(0.5, 0.7);
+  return { x, y, life, maxLife: life, maxR: rand(13, 19) };
+}
+
+// Un anillo por paso dentro del agua; lo llama updatePlayer() en player.js.
+export function spawnRipple(x, y) {
+  state.rippleDecals.push(makeRipple(x, y));
+  if (state.rippleDecals.length > RIPPLE_MAX) {
+    state.rippleDecals.splice(0, state.rippleDecals.length - RIPPLE_MAX);
+  }
+}
+
+export function updateRippleDecals(dt) {
+  for (let i = state.rippleDecals.length - 1; i >= 0; i--) {
+    const r = state.rippleDecals[i];
+    r.life -= dt;
+    if (r.life <= 0) state.rippleDecals.splice(i, 1);
+  }
+}
+
+// Se dibuja DESPUÉS de drawPonds (ver render.js) para que el anillo quede
+// sobre la superficie del agua y no debajo, a diferencia de drawBloodDecals
+// que va antes (esas sí van "en el pasto", debajo de todo).
+export function drawRippleDecals(ctx, cam, viewW, viewH) {
+  for (const r of state.rippleDecals) {
+    const sx = r.x - cam.x;
+    const sy = r.y - cam.y;
+    if (sx < -30 || sx > viewW + 30 || sy < -30 || sy > viewH + 30) continue;
+    // El anillo crece y se desvanece a la vez: chico y opaco al nacer,
+    // grande y transparente justo antes de desaparecer.
+    const t = 1 - r.life / r.maxLife;
+    const radius = r.maxR * t;
+    const alpha = 0.55 * (1 - t);
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(1, 0.5); // achatado, misma perspectiva top-down que el óvalo de la laguna
+    ctx.strokeStyle = `rgba(214,232,236,${alpha})`;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.restore();
   }
 }

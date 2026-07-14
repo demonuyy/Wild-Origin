@@ -1,6 +1,6 @@
 import { state, rand, dist, clamp, DAY_LENGTH, isNightPhase } from './config.js';
 import { SoundFX } from './audio.js';
-import { spawnBlood } from './world.js';
+import { spawnBlood, maybeSpawnWaterRipple } from './world.js';
 import { pushLog } from './ui.js';
 
 // Radio en el que un lobo que entra en persecución llama a la manada: otros
@@ -29,7 +29,18 @@ export function updateWolves(dt) {
   for (const w of state.wolves) {
     const distToPlayer = dist(w.x, w.y, state.player.x, state.player.y);
     const alert = night ? w.alertR * 2.6 : w.alertR;
-    const nearFire = state.campfires.some(f => dist(f.x, f.y, w.x, w.y) < 150) || state.shelters.some(s => dist(s.x, s.y, w.x, w.y) < 190);
+    // Histéresis: antes esto se recalculaba "en crudo" cada frame con un
+    // límite único (150/190), así que un lobo parado justo en ese borde
+    // alternaba entre "perseguir" y "huir del fuego" frame a frame y
+    // quedaba titilando en el lugar. Ahora, una vez que empieza a
+    // retroceder, se queda retrocediendo hasta estar claramente afuera
+    // (borde + 40) antes de volver a perseguir; el reingreso sigue usando
+    // el límite original para no hacerlo entrar de más.
+    const nearFireEnter = state.campfires.some(f => dist(f.x, f.y, w.x, w.y) < 150) || state.shelters.some(s => dist(s.x, s.y, w.x, w.y) < 190);
+    const nearFireExit = state.campfires.some(f => dist(f.x, f.y, w.x, w.y) < 190) || state.shelters.some(s => dist(s.x, s.y, w.x, w.y) < 230);
+    if (nearFireEnter) w.fireRepelled = true;
+    else if (!nearFireExit) w.fireRepelled = false;
+    const nearFire = !!w.fireRepelled;
 
     if (w.attackCd > 0) w.attackCd -= dt;
     if (w.howlCd === undefined) w.howlCd = rand(25, 45);
@@ -53,8 +64,17 @@ export function updateWolves(dt) {
     if (w.state === 'chase') {
       let ang = Math.atan2(state.player.y - w.y, state.player.x - w.x);
       if (nearFire) ang += Math.PI;
-      w.x += Math.cos(ang) * w.speed * dt;
-      w.y += Math.sin(ang) * w.speed * dt;
+      // Frenar a una distancia mínima del jugador (en vez de seguir
+      // empujando hasta pisarlo): a distancia casi nula, atan2 se vuelve
+      // inestable con el más mínimo movimiento y el lobo tiembla en el
+      // lugar en vez de quedarse quieto mordiendo. No aplica mientras huye
+      // del fuego, ahí sí tiene que poder alejarse aunque esté cerca.
+      const willMove = nearFire || distToPlayer > 26;
+      if (willMove) {
+        w.x += Math.cos(ang) * w.speed * dt;
+        w.y += Math.sin(ang) * w.speed * dt;
+        maybeSpawnWaterRipple(w, dt);
+      }
       if (distToPlayer < 30 && w.attackCd <= 0) {
         state.player.health = clamp(state.player.health - 9, 0, 100);
         state.player.hitFlash = 0.3;
@@ -64,10 +84,17 @@ export function updateWolves(dt) {
         spawnBlood(state.player.x, state.player.y, 3);
         pushLog('¡Un lobo te mordió!');
       }
-      w.footstepTimer = (w.footstepTimer || 0) - dt;
-      if (w.footstepTimer <= 0) {
-        SoundFX.footstepAnimal(w.x, w.y, 1);
-        w.footstepTimer = 0.24;
+      // El timer de pasos solo cuenta mientras el lobo se mueve de verdad:
+      // antes seguía corriendo (y sonando) igual aunque el frenado de arriba
+      // lo dejara quieto pegado al jugador.
+      if (willMove) {
+        w.footstepTimer = (w.footstepTimer || 0) - dt;
+        if (w.footstepTimer <= 0) {
+          SoundFX.footstepAnimal(w.x, w.y, 1);
+          w.footstepTimer = 0.24;
+        }
+      } else {
+        w.footstepTimer = 0;
       }
     } else if (w.state === 'search') {
       w.searchTimer -= dt;
@@ -79,6 +106,7 @@ export function updateWolves(dt) {
         const ang = Math.atan2(w.lastSeenY - w.y, w.lastSeenX - w.x);
         w.x += Math.cos(ang) * w.speed * 0.55 * dt;
         w.y += Math.sin(ang) * w.speed * 0.55 * dt;
+        maybeSpawnWaterRipple(w, dt);
       }
     } else {
       if (!w.wanderTarget || dist(w.x, w.y, w.wanderTarget.x, w.wanderTarget.y) < 20) {
@@ -87,6 +115,7 @@ export function updateWolves(dt) {
       const ang = Math.atan2(w.wanderTarget.y - w.y, w.wanderTarget.x - w.x);
       w.x += Math.cos(ang) * w.speed * 0.35 * dt;
       w.y += Math.sin(ang) * w.speed * 0.35 * dt;
+      maybeSpawnWaterRipple(w, dt);
 
       // Aullido ambiental nocturno: solo lobos tranquilos, de a uno por vez
       // (el cooldown individual evita que aúllen todos juntos todo el rato).

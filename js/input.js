@@ -8,7 +8,7 @@ import { state, canvas, ZOOM_MIN, ZOOM_MAX, clamp } from './config.js';
 import { SoundFX } from './audio.js';
 import { tryInteract, tryAttack, handleManualEat } from './player.js';
 import { tryCraftSpear, tryPlaceCampfire, tryCraftAxe, tryCraftPickaxe, tryCraftBackpack, tryPlaceShelter, tryEquipTool } from './crafting.js';
-import { showHint, toggleInventory, closeInventory, isInventoryOpen, openPause, closePause } from './ui.js';
+import { showHint, toggleInventory, closeInventory, isInventoryOpen, toggleCraftMenu, closeCraftMenu, isCraftMenuOpen, openPause, closePause } from './ui.js';
 
 export function bindControls() {
   window.addEventListener('keydown', e => {
@@ -28,8 +28,10 @@ export function bindControls() {
     if (!state.running || state.gameOver) return;
     if (e.key === 'q' || e.key === 'Q') handleManualEat();
     if (e.key === 'i' || e.key === 'I') toggleInventory();
+    if (e.key === 'c' || e.key === 'C') toggleCraftMenu();
     if (e.key === 'Escape') {
       if (isInventoryOpen()) closeInventory();
+      else if (isCraftMenuOpen()) closeCraftMenu();
       else if (state.paused) closePause();
       else openPause();
     }
@@ -72,7 +74,9 @@ export function bindControls() {
       if (!state.running || state.gameOver || state.paused) return;
       const type = e.dataTransfer.getData('text/plain');
       const action = el.dataset.action;
-      if (action === 'axe' && type === 'axe' && state.player.hasAxe) {
+      if (action === 'spear' && type === 'spear' && state.player.hasSpear) {
+        tryEquipTool('spear');
+      } else if (action === 'axe' && type === 'axe' && state.player.hasAxe) {
         tryEquipTool('axe');
       } else if (action === 'pickaxe' && type === 'pickaxe' && state.player.hasPickaxe) {
         tryEquipTool('pickaxe');
@@ -83,4 +87,16 @@ export function bindControls() {
     });
   });
   document.getElementById('invToggleBtn').addEventListener('click', () => toggleInventory());
+
+  // Menú de crafteo completo (tecla C): el grid se reconstruye cada vez que
+  // se abre o cambia el estado (ver renderCraftGrid en ui.js), así que el
+  // listener se delega en el contenedor en vez de ponerse por-slot como en
+  // la hotbar (que es estática). Reutiliza las mismas acciones.
+  document.getElementById('craftGrid').addEventListener('click', e => {
+    if (!state.running || state.gameOver || state.paused) return;
+    const slot = e.target.closest('.craftSlot[data-action]');
+    if (!slot) return;
+    const action = HOTBAR_ACTIONS[slot.dataset.action];
+    if (action) action();
+  });
 }
