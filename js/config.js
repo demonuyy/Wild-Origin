@@ -70,6 +70,13 @@ export const state = {
     hunger: 100,
     thirst: 100,
     stamina: 100,
+    // Cooldown (en segundos) que arranca al llegar a 0 de energía: mientras
+    // esté activo, no se puede volver a correr aunque la energía ya se haya
+    // recuperado. Ver STAMINA_COOLDOWN en player.js.
+    staminaCooldown: 0,
+    // Se resetea a 4 cada vez que el jugador corre: mientras no llegue a 0,
+    // la energía no se regenera (aunque ya se haya soltado shift/parado).
+    staminaRegenDelay: 0,
     wood: 0,
     stone: 0,
     berries: 0,

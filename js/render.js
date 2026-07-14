@@ -63,74 +63,49 @@ function drawPlayer(cam) {
   const perpY = player.dir.x;
   const armSwing = moving ? Math.sin(state.elapsed * 10) * 4 : 0;
   const hasTool = player.hasSpear || player.equippedTool === 'axe' || player.equippedTool === 'pickaxe';
+  // Contorno oscuro fino aplicado a casi todas las piezas: es lo que hace
+  // que el personaje se lea con claridad contra el pasto/fondo, en vez de
+  // mezclarse con los colores del mundo como pasaba antes.
+  const OUTLINE = 'rgba(35,24,14,0.55)';
 
   ctx.fillStyle = 'rgba(0,0,0,0.32)';
   ctx.beginPath();
   ctx.ellipse(sx, player.y - cam.y + 15, 12, 5, 0, 0, Math.PI * 2);
   ctx.fill();
 
+  // Mochila: ahora se ancla detrás del jugador (lado opuesto a hacia donde
+  // mira) en vez de a un costado fijo, así no queda "flotando" rara cuando
+  // el jugador cambia de dirección.
   if (player.hasBackpack) {
-    ctx.fillStyle = '#5a4530';
+    const bpX = sx - player.dir.x * 7;
+    const bpY = sy - player.dir.y * 7 + 3;
+    ctx.fillStyle = '#4a3826';
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
-    ctx.ellipse(sx - player.dir.y * 8, sy + 4 - player.dir.x * 2, 6, 8, 0, 0, Math.PI * 2);
+    ctx.ellipse(bpX, bpY, 6.5, 8, 0, 0, Math.PI * 2);
     ctx.fill();
-  }
-
-  // ---- Brazos y manos ----
-  // Se dibujan antes que el torso a propósito: el hombro queda tapado por la
-  // ropa y solo se ve el brazo/mano asomando hacia afuera, como en cualquier
-  // sprite top-down con capas. La mano "libre" se balancea al caminar; la
-  // mano "activa" agarra la lanza/hacha/pico más adelante si hay una
-  // herramienta en la mano (si no, se balancea igual que la libre).
-  function drawArm(shoulderSide, handX, handY) {
-    const shoulderX = sx + perpX * 6 * shoulderSide;
-    const shoulderY = sy + 3 + perpY * 6 * shoulderSide;
-    ctx.strokeStyle = '#71492a';
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(shoulderX, shoulderY);
-    ctx.lineTo(handX, handY);
     ctx.stroke();
-    const handG = ctx.createRadialGradient(handX - 1, handY - 1, 0.5, handX, handY, 3.4);
-    handG.addColorStop(0, '#f0cca0');
-    handG.addColorStop(1, '#cf9d6c');
-    ctx.fillStyle = handG;
-    ctx.beginPath();
-    ctx.arc(handX, handY, 3.1, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  const freeShoulderX = sx + perpX * 6 * -1;
-  const freeShoulderY = sy + 3 + perpY * 6 * -1;
-  drawArm(-1,
-    freeShoulderX - player.dir.x * (armSwing - 3),
-    freeShoulderY - player.dir.y * (armSwing - 3) + 9);
-
-  const activeShoulderX = sx + perpX * 6;
-  const activeShoulderY = sy + 3 + perpY * 6;
-  if (hasTool) {
-    drawArm(1, sx + player.dir.x * 14, sy + player.dir.y * 14 + 2);
-  } else {
-    drawArm(1,
-      activeShoulderX + player.dir.x * (armSwing + 3),
-      activeShoulderY + player.dir.y * (armSwing + 3) + 9);
   }
 
   // ---- Piernas ----
-  // Mismo criterio de capas que los brazos: se dibujan antes que el torso
-  // para que la cadera quede tapada por la ropa y solo se vean los pies
-  // asomando por debajo. Se balancean en contrafase entre sí (una pierna
-  // adelante, la otra atrás) siguiendo el mismo ritmo que el bamboleo del
-  // cuerpo, para que se note el paso al caminar.
+  // Se dibujan antes que el torso para que la cadera quede tapada por él y
+  // solo se vean los pies asomando por debajo, en contrafase entre sí (una
+  // pierna adelante, la otra atrás) siguiendo el bamboleo del cuerpo.
   function drawLeg(hipSide, swing) {
     const hipX = sx + perpX * 4 * hipSide;
     const hipY = sy + 12;
     const footX = hipX + player.dir.x * swing;
     const footY = hipY + 8 + player.dir.y * swing;
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(hipX, hipY);
+    ctx.lineTo(footX, footY);
+    ctx.stroke();
     ctx.strokeStyle = '#4a3320';
     ctx.lineWidth = 3.4;
-    ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(hipX, hipY);
     ctx.lineTo(footX, footY);
@@ -145,16 +120,126 @@ function drawPlayer(cam) {
   drawLeg(-1, legSwing);
   drawLeg(1, -legSwing);
 
+  // ---- Brazos y manos ----
+  // La mano "libre" se balancea al caminar; la mano "activa" agarra la
+  // lanza/hacha/pico si hay una herramienta en la mano (si no, se balancea
+  // igual que la libre). Los hombros se separan un poco más del cuerpo
+  // (ARM_SPACING) que antes para que ambos brazos se noten mejor.
+  const ARM_SPACING = 8.5;
+
+  function drawArm(shoulderSide, handX, handY) {
+    const shoulderX = sx + perpX * ARM_SPACING * shoulderSide;
+    const shoulderY = sy - 3 + perpY * ARM_SPACING * shoulderSide;
+    // Trazo oscuro un poco más ancho detrás, para que el brazo tenga borde
+    // definido en vez de ser una línea plana flotando sobre el fondo.
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(shoulderX, shoulderY);
+    ctx.lineTo(handX, handY);
+    ctx.stroke();
+    ctx.strokeStyle = '#dba579';
+    ctx.lineWidth = 3.6;
+    ctx.beginPath();
+    ctx.moveTo(shoulderX, shoulderY);
+    ctx.lineTo(handX, handY);
+    ctx.stroke();
+    const handG = ctx.createRadialGradient(handX - 1, handY - 1, 0.5, handX, handY, 3.4);
+    handG.addColorStop(0, '#f0cca0');
+    handG.addColorStop(1, '#cf9d6c');
+    ctx.fillStyle = handG;
+    ctx.beginPath();
+    ctx.arc(handX, handY, 3.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  const freeShoulderX = sx + perpX * ARM_SPACING * -1;
+  const freeShoulderY = sy - 3 + perpY * ARM_SPACING * -1;
+  const freeHandX = freeShoulderX - player.dir.x * (armSwing - 3);
+  const freeHandY = freeShoulderY - player.dir.y * (armSwing - 3) + 8;
+
+  const activeShoulderX = sx + perpX * ARM_SPACING;
+  const activeShoulderY = sy - 3 + perpY * ARM_SPACING;
+  let activeHandX, activeHandY;
+  if (hasTool) {
+    activeHandX = sx + player.dir.x * 14;
+    activeHandY = sy + player.dir.y * 14 - 2;
+  } else {
+    activeHandX = activeShoulderX + player.dir.x * (armSwing + 3);
+    activeHandY = activeShoulderY + player.dir.y * (armSwing + 3) + 8;
+  }
+
+  // Cuál brazo queda tapado por el torso depende de hacia qué lado mira el
+  // jugador: mirando a la izquierda, el brazo derecho (shoulderSide 1) pasa
+  // por detrás; mirando a la derecha, es el izquierdo (shoulderSide -1) el
+  // que pasa por detrás. Mirando solo arriba/abajo no hay un lado detrás
+  // claro, así que se dibujan los dos por delante como antes.
+  const backSide = player.dir.x < -0.05 ? 1 : (player.dir.x > 0.05 ? -1 : 0);
+
+  if (backSide === 1) drawArm(1, activeHandX, activeHandY);
+  else if (backSide === -1) drawArm(-1, freeHandX, freeHandY);
+
+  // ---- Torso ----
+  // Antes era un triángulo con la punta siempre hacia arriba sin importar
+  // hacia dónde caminara el jugador; combinado con brazos/piernas que sí
+  // giran según player.dir, quedaba una mezcla rara (cuerpo "mirando" para
+  // un lado, extremidades para otro). Ahora es un torso desnudo (mismo tono
+  // de piel que la cabeza y los brazos) con hombros redondeados, y un
+  // taparrabos de cuero cubriendo solo la cadera en vez de una remera entera.
+  ctx.fillStyle = OUTLINE;
+  ctx.beginPath();
+  ctx.moveTo(sx - 9.5, sy + 14.5);
+  ctx.quadraticCurveTo(sx - 10.5, sy - 2.5, sx - 6, sy - 7.5);
+  ctx.quadraticCurveTo(sx, sy - 10.5, sx + 6, sy - 7.5);
+  ctx.quadraticCurveTo(sx + 10.5, sy - 2.5, sx + 9.5, sy + 14.5);
+  ctx.closePath();
+  ctx.fill();
+
   const bodyG = ctx.createLinearGradient(sx - 9, 0, sx + 9, 0);
-  bodyG.addColorStop(0, '#5f3f22');
-  bodyG.addColorStop(0.5, '#8a5c34');
-  bodyG.addColorStop(1, '#5f3f22');
+  bodyG.addColorStop(0, '#cf9d6c');
+  bodyG.addColorStop(0.5, '#f0cca0');
+  bodyG.addColorStop(1, '#cf9d6c');
   ctx.fillStyle = bodyG;
   ctx.beginPath();
-  ctx.moveTo(sx - 9, sy + 14);
-  ctx.lineTo(sx + 9, sy + 14);
-  ctx.lineTo(sx, sy - 6);
+  ctx.moveTo(sx - 8.5, sy + 14);
+  ctx.quadraticCurveTo(sx - 9.5, sy - 2, sx - 5.5, sy - 6.8);
+  ctx.quadraticCurveTo(sx, sy - 9.6, sx + 5.5, sy - 6.8);
+  ctx.quadraticCurveTo(sx + 9.5, sy - 2, sx + 8.5, sy + 14);
   ctx.closePath();
+  ctx.fill();
+
+  // Taparrabos: paño de cuero que cubre solo la parte baja del torso (la
+  // cadera), dejando el pecho al desnudo.
+  ctx.fillStyle = OUTLINE;
+  ctx.beginPath();
+  ctx.moveTo(sx - 8.8, sy + 14.5);
+  ctx.lineTo(sx + 8.8, sy + 14.5);
+  ctx.lineTo(sx + 6.8, sy + 3.5);
+  ctx.lineTo(sx - 6.8, sy + 3.5);
+  ctx.closePath();
+  ctx.fill();
+
+  const clothG = ctx.createLinearGradient(sx - 7, 0, sx + 7, 0);
+  clothG.addColorStop(0, '#4a3320');
+  clothG.addColorStop(0.5, '#6b4d2c');
+  clothG.addColorStop(1, '#4a3320');
+  ctx.fillStyle = clothG;
+  ctx.beginPath();
+  ctx.moveTo(sx - 8, sy + 14);
+  ctx.lineTo(sx + 8, sy + 14);
+  ctx.lineTo(sx + 6, sy + 4);
+  ctx.lineTo(sx - 6, sy + 4);
+  ctx.closePath();
+  ctx.fill();
+
+  // ---- Cabeza ----
+  ctx.fillStyle = OUTLINE;
+  ctx.beginPath();
+  ctx.arc(sx, sy - 12, 8.8, 0, Math.PI * 2);
   ctx.fill();
 
   const headG = ctx.createRadialGradient(sx - 3, sy - 15, 1, sx, sy - 12, 9);
@@ -164,6 +249,52 @@ function drawPlayer(cam) {
   ctx.beginPath();
   ctx.arc(sx, sy - 12, 8, 0, Math.PI * 2);
   ctx.fill();
+
+  // Mirando hacia el norte (arriba) se ve la nuca, no la cara: en ese caso
+  // el pelo cubre toda la cabeza y no se dibujan ojos. En cualquier otra
+  // dirección se ve un casquete de pelo solo del lado de atrás, y la cara
+  // (ojos) del lado hacia donde camina.
+  const facingNorth = player.dir.y < -0.5;
+
+  if (facingNorth) {
+    ctx.fillStyle = '#3a2a1a';
+    ctx.beginPath();
+    ctx.arc(sx, sy - 12, 7.6, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // Pelo: un casquete oscuro sobre la mitad de atrás de la cabeza (opuesta
+    // a hacia donde mira), para reforzar que la "cara" queda del otro lado.
+    ctx.fillStyle = '#3a2a1a';
+    ctx.beginPath();
+    ctx.arc(sx - player.dir.x * 2.5, sy - 12 - player.dir.y * 2.5, 7.6,
+      Math.atan2(player.dir.y, player.dir.x) + Math.PI * 0.5,
+      Math.atan2(player.dir.y, player.dir.x) + Math.PI * 1.5);
+    ctx.fill();
+
+    // Ojos: dos puntitos oscuros corridos hacia donde mira el jugador y
+    // separados a los costados, así de un vistazo se entiende para dónde
+    // está mirando (antes la cabeza era una bolita lisa, sin cara).
+    const eyeFX = sx + player.dir.x * 4;
+    const eyeFY = sy - 12 + player.dir.y * 4;
+    ctx.fillStyle = '#2a1c12';
+    [-1, 1].forEach(side => {
+      ctx.beginPath();
+      ctx.arc(eyeFX + perpX * 2.6 * side, eyeFY + perpY * 2.6 * side, 1.15, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  // El brazo que no quedó detrás del torso se dibuja ahora, por delante de
+  // todo (torso, cabeza), bien visible. Mirando arriba/abajo se dibujan los
+  // dos acá, ambos por delante.
+  if (backSide === 1) {
+    drawArm(-1, freeHandX, freeHandY);
+  } else if (backSide === -1) {
+    drawArm(1, activeHandX, activeHandY);
+  } else {
+    drawArm(-1, freeHandX, freeHandY);
+    drawArm(1, activeHandX, activeHandY);
+  }
 
   if (player.hasSpear) {
     ctx.strokeStyle = '#c9a86a';

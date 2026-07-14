@@ -14,6 +14,9 @@ const SAMPLE_FILES = {
   swish: ['player/swish-1.wav', 'player/swish-2.wav', 'player/swish-3.wav', 'player/swish-4.wav', 'player/swish-5.wav'],
   playerHurt: ['player/player_hurt_1.wav', 'player/player_hurt_2.wav', 'player/player_hurt_3.wav', 'player/player_hurt_4.wav'],
   playerDead: ['player/player_dead.wav'],
+  // Jadeo del jugador cuando la energía llega a cero y entra en cooldown de
+  // recuperación (ver STAMINA_COOLDOWN en player.js).
+  fatigue: ['player/player_fatigue_1.wav', 'player/player_fatigue_2.wav'],
   birdsLoop: ['ambient/birds_1.wav'],
   birdChirp: ['ambient/bird_2.wav'],
   crow: ['ambient/crow_caw.wav'],
@@ -406,6 +409,13 @@ const SoundFX = (function () {
     },
     playerDeath() {
       if (!playRandom('playerDead', { vol: 0.55 })) tone(220, 1.2, 'sawtooth', 0.2, 55);
+    },
+    // Jadeo de agotamiento: suena una sola vez, justo cuando la energía llega
+    // a cero y arranca el cooldown de 5s antes de poder volver a correr.
+    fatigue() {
+      if (!playRandom('fatigue', { vol: 0.55, rateJitter: 0.05 })) {
+        tone(200, 0.3, 'sawtooth', 0.18, 90);
+      }
     },
     dayChime() { tone(660, 0.5, 'sine', 0.15, 880); },
     sleep() { tone(520, 0.3, 'sine', 0.15, 320); setTimeout(() => tone(320, 0.4, 'sine', 0.12, 220), 200); },

@@ -14,6 +14,8 @@ export function resetPlayer() {
   state.player.hunger = 100;
   state.player.thirst = 100;
   state.player.stamina = 100;
+  state.player.staminaCooldown = 0;
+  state.player.staminaRegenDelay = 0;
   state.player.wood = 0;
   state.player.stone = 0;
   state.player.berries = 0;
@@ -162,6 +164,8 @@ export function trySleep() {
   state.player.thirst = clamp(state.player.thirst - skip * 0.55, 0, 100);
   state.player.health = 100;
   state.player.stamina = 100;
+  state.player.staminaCooldown = 0;
+  state.player.staminaRegenDelay = 0;
   SoundFX.sleep();
   pushLog('Dormiste a salvo hasta el amanecer');
 }
@@ -217,20 +221,45 @@ export function updatePlayer(dt) {
   if (state.keys['a'] || state.keys['arrowleft']) mx -= 1;
   if (state.keys['d'] || state.keys['arrowright']) mx += 1;
   const moved = mx !== 0 || my !== 0;
+  // Cooldown de energía: cuenta regresiva independiente de si el jugador se
+  // mueve o no, para que corra siempre igual sin importar qué haga mientras
+  // tanto.
+  if (player.staminaCooldown > 0) {
+    player.staminaCooldown = Math.max(0, player.staminaCooldown - dt);
+  }
+  // Delay de regeneración: también cuenta regresiva sin importar qué haga
+  // el jugador. Se resetea a 4 más abajo cada frame que corre; una vez que
+  // deja de correr, tienen que pasar esos 4s antes de que la energía
+  // empiece a subir de nuevo.
+  if (player.staminaRegenDelay > 0) {
+    player.staminaRegenDelay = Math.max(0, player.staminaRegenDelay - dt);
+  }
   if (moved) {
     const len = Math.hypot(mx, my);
     mx /= len;
     my /= len;
     player.dir.x = mx;
     player.dir.y = my;
-    const sprint = state.keys['shift'] && player.stamina > 2;
+    // Ya no alcanza con tener algo de energía: si el cooldown sigue activo
+    // (arrancó al llegar a 0 la última vez), no se puede correr aunque la
+    // energía se haya recuperado mientras tanto.
+    const sprint = state.keys['shift'] && player.stamina > 0 && player.staminaCooldown <= 0;
     // Vadear una laguna pesa: se mueve a poco más de la mitad de velocidad,
     // tanto caminando como corriendo.
     const wading = isInWater(player.x, player.y);
     const spd = player.speed * (sprint ? player.sprintMult : 1) * (wading ? 0.55 : 1);
     player.x += mx * spd * dt;
     player.y += my * spd * dt;
-    if (sprint) player.stamina = clamp(player.stamina - 18 * dt, 0, 100);
+    if (sprint) {
+      player.stamina = clamp(player.stamina - 18 * dt, 0, 100);
+      player.staminaRegenDelay = 4;
+      // Se quedó sin energía corriendo: arranca el cooldown de 5s y suena
+      // el jadeo de fatiga (una sola vez, justo en el frame en que llega a 0).
+      if (player.stamina <= 0 && player.staminaCooldown <= 0) {
+        player.staminaCooldown = 5;
+        SoundFX.fatigue();
+      }
+    }
     footstepTimer -= dt;
     if (footstepTimer <= 0) {
       SoundFX.footstep(sprint ? 1.15 : 0.9, wading);
@@ -239,7 +268,7 @@ export function updatePlayer(dt) {
   } else {
     footstepTimer = 0;
   }
-  if (!state.keys['shift'] || !moved) {
+  if ((!state.keys['shift'] || !moved) && player.staminaRegenDelay <= 0) {
     player.stamina = clamp(player.stamina + 9 * dt, 0, 100);
   }
 
