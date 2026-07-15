@@ -104,15 +104,21 @@
   .controlsRow span{opacity:.8;text-align:right;}
 
   #hotbar{bottom:14px;left:50%;transform:translateX(-50%);display:flex;gap:8px;pointer-events:auto;}
+  #hotbarSlots{display:flex;gap:8px;}
   .hotSlot{position:relative;width:56px;height:56px;background:rgba(10,18,12,.65);border:1px solid rgba(203,216,195,.25);border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:background .15s ease,border-color .15s ease,box-shadow .15s ease;}
   .hotSlot:hover{background:rgba(203,216,195,.14);}
-  .hotSlot.affordable{border-color:rgba(255,184,92,.65);box-shadow:0 0 8px rgba(255,184,92,.25);}
-  .hotSlot.owned{border-color:rgba(140,175,110,.75);background:rgba(60,90,50,.3);cursor:default;}
-  .hotSlot.disabled{opacity:.42;cursor:default;}
-  .hotSlot.disabled:hover{background:rgba(10,18,12,.65);}
-  .hotSlotInv{border-color:rgba(203,216,195,.35) !important;}
-  /* Herramienta actualmente en la mano (hacha/pico): sigue siendo clickeable
-     para poder guardarla, a diferencia de "owned" a secas. */
+  /* Casilla vacía de la hotbar real: solo muestra el número de tecla, con
+     borde punteado para dejar claro que ahí se puede soltar algo. */
+  .hotSlot.emptySlot{opacity:.4;border-style:dashed;cursor:default;}
+  .hotSlot.emptySlot:hover{background:rgba(10,18,12,.65);}
+  /* Casilla con un ítem real asignado: se puede arrastrar para reordenar o
+     sacar, y clickear para usar (equipar herramienta / comer). */
+  .hotSlot.filled{cursor:grab;border-color:rgba(140,175,110,.6);background:rgba(60,90,50,.22);touch-action:none;}
+  .hotSlot.filled:active{cursor:grabbing;}
+  .hotSlot.dragging{opacity:.35;}
+  .hotSlotInv{border-color:rgba(203,216,195,.35) !important;cursor:pointer;}
+  /* Herramienta actualmente en la mano: sigue siendo clickeable para poder
+     guardarla, a diferencia de "filled" a secas. */
   .hotSlot.active{border-color:rgba(255,224,120,.9);background:rgba(120,95,40,.35);box-shadow:0 0 10px rgba(255,224,120,.45);cursor:pointer;}
   .hotSlot.active:hover{background:rgba(120,95,40,.5);}
   .hotIcon{font-size:19px;line-height:1;}
@@ -127,18 +133,25 @@
      apilan hasta STACK_SIZE por slot; las herramientas ocupan un slot entero
      y nunca se apilan. */
   .invGrid2{display:grid;grid-template-columns:repeat(5,64px);grid-template-rows:repeat(2,64px);gap:8px;justify-content:center;margin-bottom:4px;}
+  /* Con mochila (ver hasItem('backpack') en ui.js) el panel gana 2 filas
+     más: mismo ancho, el doble de casillas verticalmente. */
+  .invGrid2.expanded{grid-template-rows:repeat(4,64px);}
   .invSlot2{position:relative;width:64px;height:64px;background:rgba(203,216,195,.06);border:1px solid rgba(203,216,195,.2);border-radius:6px;display:flex;align-items:center;justify-content:center;transition:border-color .15s ease,background .15s ease,box-shadow .15s ease;}
   .invSlot2.empty{background:rgba(203,216,195,.03);}
-  .invSlot2.filled{cursor:grab;}
+  .invSlot2.filled{cursor:grab;touch-action:none;}
   .invSlot2.filled:active{cursor:grabbing;}
   .invSlot2.toolSlot{border-color:rgba(140,175,110,.55);background:rgba(60,90,50,.22);}
   .invSlot2.toolSlot.active{border-color:rgba(255,224,120,.9);background:rgba(120,95,40,.35);box-shadow:0 0 8px rgba(255,224,120,.4);}
   .invSlot2.dragging{opacity:.35;}
+  /* Casilla de inventario recibiendo un item arrastrado (desde otra casilla
+     del inventario, para reordenar, o desde la hotbar para desasignarlo). */
+  .invSlot2.dragOver{border-color:rgba(255,224,120,.95);box-shadow:0 0 12px rgba(255,224,120,.6);}
   .invIcon2{font-size:24px;}
   .stackCount{position:absolute;right:4px;bottom:2px;font-size:11px;font-weight:bold;color:var(--mist);text-shadow:0 1px 2px rgba(0,0,0,.9);}
   .invHint{margin-top:16px;font-size:10.5px;opacity:.55;letter-spacing:.5px;}
   .invHint b{color:var(--ember-glow);}
-  /* Slot de la hotbar recibiendo un item arrastrado desde el inventario. */
+  /* Slot de la hotbar recibiendo un item arrastrado desde el inventario o
+     desde otra casilla de la propia hotbar. */
   .hotSlot.dragOver{border-color:rgba(255,224,120,.95);box-shadow:0 0 12px rgba(255,224,120,.6);}
 
   /* Menú de crafteo completo (tecla C): lista vertical con TODAS las
@@ -160,6 +173,5 @@
   .craftIcon{font-size:20px;line-height:1;}
   .craftName{flex:1;font-size:13px;letter-spacing:.3px;color:var(--mist);}
   .craftCost{font-size:11px;opacity:.85;white-space:nowrap;}
-  .craftKey{position:absolute;top:5px;right:8px;font-size:9px;opacity:.6;letter-spacing:.5px;}
 
   .hidden{display:none !important;}

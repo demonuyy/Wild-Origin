@@ -112,6 +112,47 @@ dos funciones siguen aplicando tal cual.
 
 ---
 
+## Hotbar (casillas reales, no acciones de crafteo)
+
+La hotbar (abajo de la pantalla) dejó de ser 6 acciones de crafteo fijas
+siempre visibles. Ahora es `player.hotbar`: un array de `HOTBAR_SIZE` (6)
+casillas, cada una `null` o un id de `ITEMS` que el jugador YA posee.
+
+- Craftear vive enteramente en el menú de crafteo (tecla `C` / `craftGrid`
+  en ui.js), que sigue leyendo de `RECIPES` como siempre.
+- La hotbar es solo para USAR lo que ya se tiene: click (o la tecla 1-6 de
+  esa casilla) llama a `useItem(id)` (crafting.js), que equipa si es
+  herramienta, come si es comida, o avisa si es un material sin uso directo.
+- `assignHotbar`/`clearHotbarSlot`/`swapHotbarSlots`/`pruneHotbar` (todas en
+  config.js) son el único lugar que toca `player.hotbar` directamente,
+  mismo criterio que `addItem`/`removeItem` para `player.inventory`.
+- Al craftear una herramienta nueva se llama a `autoAssignHotbar(id)` para
+  que quede en la primera casilla libre sin que el jugador tenga que
+  arrastrarla a mano. Si se agrega un ítem craftable nuevo (v0.3+), conviene
+  hacer lo mismo después de `addItem`.
+- El panel de inventario (`invGrid2`) también quedó manipulable: click usa
+  el ítem (mismo `useItem`), y arrastrar reordena posiciones dentro del
+  panel (`reorderInventory` si se suelta sobre otra casilla ocupada,
+  `moveInventoryToEnd` si se suelta sobre una vacía, ambas sobre
+  `player.invOrder`) o asigna/desasigna de la hotbar.
+- El arrastre (hotbar ↔ inventario, y reordenar dentro del inventario) usa
+  **Pointer Events** (`pointerdown`/`pointermove`/`pointerup` sobre
+  `window`), no el drag&drop nativo de HTML5 (`draggable`, `dragstart`,
+  `dragover`, `drop`). Se migró de uno a otro porque el nativo tiene
+  comportamiento inconsistente entre navegadores (Safari/Firefox tienen
+  quirks con `dataTransfer`) y no anda en absoluto con touch sin polyfills;
+  Pointer Events sí es uniforme entre mouse y dedo. `slotInfoFromElement()`
+  (input.js) es el único lugar que traduce un elemento del DOM a
+  `{ container, id, slotIndex }`, y `resolveDrop()` el único que decide qué
+  hacer al soltar — si se agrega un tercer contenedor arrastrable en el
+  futuro, esos dos son los que hay que tocar.
+- El panel de inventario tiene 2 filas de 5 (10 casillas) por defecto y pasa
+  a 4 filas (20) apenas `hasItem('backpack')` es true (`invSlotCount()` en
+  ui.js + clase `.expanded` en CSS). Si en el futuro se agrega otro ítem que
+  también debería agrandar el inventario, ese es el lugar a tocar.
+
+---
+
 ## Tests
 
 `tests/` tiene tests unitarios de crafting.js, inventory.js y save.js

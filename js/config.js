@@ -15,6 +15,9 @@ export const ZOOM_MIN = 0.8;
 export const ZOOM_MAX = 2.6;
 export const ZOOM_DEFAULT = 1.6;
 
+// Cantidad de casillas de la hotbar real (ver player.hotbar más abajo).
+export const HOTBAR_SIZE = 6;
+
 // Registro central de ítems. Antes cada material/herramienta vivía como un
 // campo suelto en state.player (player.wood, player.hasAxe, etc.) repetido
 // en crafting.js/inventory.js/ui.js/save.js. Ahora player.inventory es un
@@ -29,7 +32,10 @@ export const ZOOM_DEFAULT = 1.6;
 export const ITEMS = {
   wood: { label: 'Madera', icon: '🌲', stack: STACK_SIZE, category: 'resource' },
   stone: { label: 'Piedra', icon: '🪨', stack: STACK_SIZE, category: 'resource' },
-  berries: { label: 'Bayas', icon: '🍓', stack: STACK_SIZE, category: 'food' },
+  // `hunger`: cuánta hambre restaura comer 1 unidad (ver consumeFood en
+  // inventory.js). Ítems futuros de comida (v0.3+: carne cocida, etc.) solo
+  // necesitan agregar su propio valor acá.
+  berries: { label: 'Bayas', icon: '🍓', stack: STACK_SIZE, category: 'food', hunger: 22 },
   spear: { label: 'Lanza', icon: '🔱', stack: 1, category: 'tool' },
   axe: { label: 'Hacha', icon: '🪓', stack: 1, category: 'tool' },
   pickaxe: { label: 'Pico', icon: '⛏️', stack: 1, category: 'tool' },
@@ -107,6 +113,20 @@ export const state = {
     // esto eran campos sueltos (wood/stone/berries/hasAxe/...); usar
     // addItem/removeItem/hasItem/countItem en vez de tocar este array a mano.
     inventory: [],
+    // Hotbar real: HOTBAR_SIZE casillas, cada una null o un id de ITEMS que
+    // el jugador ya posee. A diferencia de antes (6 acciones de crafteo fijas
+    // hardcodeadas en el HTML), ahora solo puede haber acá ítems que el
+    // jugador REALMENTE tiene, asignados a mano (arrastrando desde el
+    // inventario) o automáticamente al craftear una herramienta nueva (ver
+    // autoAssignHotbar). pruneHotbar() se encarga de vaciar una casilla si el
+    // ítem que apuntaba se terminó (se craftea de nuevo, se come, etc.).
+    hotbar: new Array(HOTBAR_SIZE).fill(null),
+    // Orden de despliegue del panel de inventario (array de ids de ITEMS).
+    // Antes el panel se armaba iterando player.inventory tal cual, así que
+    // no había forma de "mover" un ítem de lugar. getInventoryOrder() lo
+    // mantiene sincronizado (agrega ids nuevos, saca los que ya no se
+    // poseen) y reorderInventory() permite swappear dos posiciones.
+    invOrder: [],
     // Herramienta actualmente "en la mano" (null, 'axe' o 'pickaxe'). Tenerla
     // en la mano (no solo poseerla) es lo que habilita talar/minar.
     equippedTool: null,
@@ -179,6 +199,88 @@ export function invTotal() {
   return state.player.inventory
     .filter(s => ITEMS[s.id] && ITEMS[s.id].category !== 'tool')
     .reduce((sum, s) => sum + s.qty, 0);
+}
+
+// ---------- Hotbar real (casillas asignables) ----------
+// Único lugar donde se lee/escribe player.hotbar directamente, mismo
+// criterio que addItem/removeItem para player.inventory.
+
+// Vacía cualquier casilla cuyo ítem ya no se posea (se gastó, se craftea de
+// nuevo desde cero, etc.). Se llama antes de cada render de la hotbar.
+export function pruneHotbar() {
+  state.player.hotbar = state.player.hotbar.map(id => (id && hasItem(id)) ? id : null);
+}
+
+// Asigna `id` a la casilla `index`. Si ese ítem ya estaba en otra casilla,
+// la vieja queda vacía (un mismo ítem no puede estar duplicado en la
+// hotbar, ya que la casilla apunta al TIPO de ítem, no a una unidad).
+export function assignHotbar(index, id) {
+  if (index < 0 || index >= state.player.hotbar.length) return;
+  if (!hasItem(id)) return;
+  const existing = state.player.hotbar.indexOf(id);
+  if (existing !== -1) state.player.hotbar[existing] = null;
+  state.player.hotbar[index] = id;
+}
+
+export function clearHotbarSlot(index) {
+  if (index < 0 || index >= state.player.hotbar.length) return;
+  state.player.hotbar[index] = null;
+}
+
+export function swapHotbarSlots(i, j) {
+  if (i === j || i < 0 || j < 0 || i >= state.player.hotbar.length || j >= state.player.hotbar.length) return;
+  const tmp = state.player.hotbar[i];
+  state.player.hotbar[i] = state.player.hotbar[j];
+  state.player.hotbar[j] = tmp;
+}
+
+// Se llama justo después de craftear una herramienta nueva (spear/axe/
+// pickaxe/backpack en crafting.js) para que quede visible en la hotbar sin
+// que el jugador tenga que arrastrarla a mano. Si ya está en la hotbar (por
+// ejemplo se volvió a craftear) o no queda ninguna casilla libre, no hace
+// nada.
+export function autoAssignHotbar(id) {
+  if (state.player.hotbar.includes(id)) return;
+  const emptyIndex = state.player.hotbar.indexOf(null);
+  if (emptyIndex !== -1) state.player.hotbar[emptyIndex] = id;
+}
+
+// ---------- Orden del panel de inventario ----------
+// Devuelve (y sincroniza) el orden de despliegue: saca ids que ya no se
+// poseen y agrega al final los que aparecieron y todavía no tienen lugar
+// asignado. Se llama cada vez que se arma la grilla del panel.
+export function getInventoryOrder() {
+  const owned = new Set(state.player.inventory.filter(s => s.qty > 0).map(s => s.id));
+  state.player.invOrder = state.player.invOrder.filter(id => owned.has(id));
+  for (const slot of state.player.inventory) {
+    if (slot.qty > 0 && !state.player.invOrder.includes(slot.id)) {
+      state.player.invOrder.push(slot.id);
+    }
+  }
+  return state.player.invOrder;
+}
+
+// Intercambia la posición de dos ids en el orden del inventario (drag de un
+// item sobre otro dentro de la grilla).
+export function reorderInventory(idA, idB) {
+  const order = getInventoryOrder();
+  const iA = order.indexOf(idA);
+  const iB = order.indexOf(idB);
+  if (iA === -1 || iB === -1 || iA === iB) return;
+  [order[iA], order[iB]] = [order[iB], order[iA]];
+}
+
+// Mueve un id al final del orden del inventario. Como buildInventorySlots()
+// (ui.js) siempre dibuja los tipos poseídos en fila y las casillas vacías
+// quedan al final, arrastrar un ítem sobre una casilla vacía no tiene un
+// "índice" concreto contra el cual swappear (reorderInventory necesita otro
+// ítem del lado B) — mandarlo al final es la forma natural de "moverlo ahí".
+export function moveInventoryToEnd(id) {
+  const order = getInventoryOrder();
+  const i = order.indexOf(id);
+  if (i === -1) return;
+  order.splice(i, 1);
+  order.push(id);
 }
 
 export function isNightPhase(phase) {

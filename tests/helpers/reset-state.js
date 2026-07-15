@@ -1,4 +1,4 @@
-import { state } from '../../js/config.js';
+import { state, HOTBAR_SIZE } from '../../js/config.js';
 
 // state (en config.js) es un único objeto compartido por todos los módulos
 // del juego -- exactamente igual que en el navegador. Para que un test no
@@ -32,6 +32,8 @@ export function resetState() {
     dir: { x: 0, y: 1 },
     health: 100, hunger: 100, thirst: 100, stamina: 100,
     inventory: [],
+    hotbar: new Array(HOTBAR_SIZE).fill(null),
+    invOrder: [],
     equippedTool: null,
     attackDamage: 12, attackRange: 34, attackCooldown: 0, hitFlash: 0
   });

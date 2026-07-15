@@ -4,7 +4,7 @@ import { countItem, removeItem } from './config.js';
 //
 // Antes cada costo (madera/piedra) vivía duplicado en dos lugares: la
 // validación real en crafting.js (if wood >= X && stone >= Y) y una copia
-// paralela en ui.js (HOTBAR_CONFIG) solo para pintar el número en la hotbar.
+// paralela en ui.js (antes HOTBAR_CONFIG, hoy CRAFT_CONFIG) solo para pintar el número en la hotbar.
 // Si alguien cambiaba un costo en uno y se olvidaba del otro, la UI mentía
 // sobre lo que realmente costaba craftear algo. Ahora los dos leen de acá.
 //

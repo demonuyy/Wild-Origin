@@ -1,4 +1,4 @@
-import { state, capFor, invTotal, clamp, hasItem, addItem, removeItem } from './config.js';
+import { state, capFor, invTotal, clamp, hasItem, addItem, removeItem, ITEMS } from './config.js';
 import { SoundFX } from './audio.js';
 import { pushLog, showHint } from './ui.js';
 import { removeEntity } from './world.js';
@@ -106,9 +106,23 @@ export function collectBushResource(b) {
   if (b.stock <= 0) b.regrowTimer = 26;
 }
 
-export function consumeBerry() {
-  removeItem('berries', 1);
-  state.player.hunger = clamp(state.player.hunger + 22, 0, 100);
+// Come 1 unidad de cualquier ítem categoría 'food' (antes esto era solo
+// consumeBerry con el valor de hambre hardcodeado; ahora ese valor sale de
+// ITEMS[id].hunger, así que un ítem de comida nuevo del roadmap v0.3+
+// -carne cocida, etc.- no necesita tocar este archivo). Usado tanto desde
+// la hotbar/inventario (click, ver useItem en crafting.js) como desde el
+// atajo de teclado Q (ver handleManualEat en player.js).
+export function consumeFood(id) {
+  const info = ITEMS[id];
+  if (!info || info.category !== 'food' || !hasItem(id)) return;
+  removeItem(id, 1);
+  state.player.hunger = clamp(state.player.hunger + (info.hunger || 15), 0, 100);
   SoundFX.eat();
-  pushLog('Comiste bayas');
+  pushLog(`Comiste ${info.label.toLowerCase()}`);
+}
+
+// Se mantiene el nombre histórico (se llama desde player.js/handleManualEat)
+// para no tocar ese call site.
+export function consumeBerry() {
+  consumeFood('berries');
 }

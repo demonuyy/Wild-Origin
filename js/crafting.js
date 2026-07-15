@@ -1,7 +1,8 @@
-import { state, BACKPACK_BONUS, hasItem, addItem } from './config.js';
+import { state, BACKPACK_BONUS, hasItem, addItem, ITEMS, autoAssignHotbar } from './config.js';
 import { SoundFX } from './audio.js';
 import { pushLog, showHint, updateEquipUI } from './ui.js';
 import { RECIPES, canAfford, payCost, costHint } from './recipes.js';
+import { consumeFood } from './inventory.js';
 
 export function tryCraftSpear() {
   if (hasItem('spear')) {
@@ -11,6 +12,7 @@ export function tryCraftSpear() {
   if (canAfford(state.player, RECIPES.spear.cost)) {
     payCost(state.player, RECIPES.spear.cost);
     addItem('spear', 1);
+    autoAssignHotbar('spear');
     // Recién fabricada, queda directamente en la mano (mismo criterio que
     // hacha/pico). El bono de daño/alcance solo se aplica mientras está
     // equipada de verdad (ver tryAttack en player.js), no por tenerla
@@ -45,6 +47,7 @@ export function tryCraftAxe() {
   if (canAfford(state.player, RECIPES.axe.cost)) {
     payCost(state.player, RECIPES.axe.cost);
     addItem('axe', 1);
+    autoAssignHotbar('axe');
     // Recién fabricada, queda directamente en la mano.
     state.player.equippedTool = 'axe';
     SoundFX.craftOk();
@@ -64,6 +67,7 @@ export function tryCraftPickaxe() {
   if (canAfford(state.player, RECIPES.pickaxe.cost)) {
     payCost(state.player, RECIPES.pickaxe.cost);
     addItem('pickaxe', 1);
+    autoAssignHotbar('pickaxe');
     // Recién fabricado, queda directamente en la mano.
     state.player.equippedTool = 'pickaxe';
     SoundFX.craftOk();
@@ -106,12 +110,32 @@ export function tryCraftBackpack() {
   if (canAfford(state.player, RECIPES.backpack.cost)) {
     payCost(state.player, RECIPES.backpack.cost);
     addItem('backpack', 1);
+    autoAssignHotbar('backpack');
     SoundFX.craftOk();
     updateEquipUI();
     pushLog(`Fabricaste una mochila: capacidad +${BACKPACK_BONUS}`);
   } else {
     SoundFX.craftFail();
     showHint(costHint('backpack'));
+  }
+}
+
+// Punto de entrada único para "usar" un ítem que ya se posee, ya sea
+// clickeado desde una casilla de la hotbar o desde el panel de inventario
+// (ver input.js). Qué significa "usar" depende de la categoría en ITEMS:
+// una herramienta se equipa/guarda, una comida se come, y un recurso
+// suelto (madera/piedra) no tiene una acción directa -solo sirve para
+// craftear-, así que se avisa en vez de no hacer nada silenciosamente.
+export function useItem(id) {
+  const info = ITEMS[id];
+  if (!info || !hasItem(id)) return;
+  if (info.category === 'tool') {
+    tryEquipTool(id);
+  } else if (info.category === 'food') {
+    consumeFood(id);
+  } else {
+    SoundFX.craftFail();
+    showHint(`${info.label} es un material: usalo para craftear (tecla C)`);
   }
 }
 

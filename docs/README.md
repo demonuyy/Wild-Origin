@@ -27,7 +27,8 @@ Estado:
 - Vida (con regeneración pasiva de día si hambre/sed están altas)
 - Día y noche (fases: amanecer, día, atardecer, noche, madrugada, con oscuridad dinámica)
 - Inventario (con capacidad máxima y panel propio, tecla "I")
-- Hotbar de crafteo rápido (teclas 1-6 o clic)
+- Hotbar real (teclas 1-6 o clic): solo muestra los objetos que ya tenés, se arma arrastrando ítems desde el inventario y clickeando/arrastrando se equipan, comen o reordenan
+- Menú de crafteo (tecla "C"): todas las recetas disponibles en un solo panel
 - Lobos (IA: deambulan o persiguen, huyen del fuego y refugios)
 - Ciervos (huyen del jugador)
 - Árboles

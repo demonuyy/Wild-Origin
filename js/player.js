@@ -1,4 +1,4 @@
-import { state, clamp, dist, DAY_LENGTH, invTotal, capFor, isNightPhase, hasItem } from './config.js';
+import { state, clamp, dist, DAY_LENGTH, invTotal, capFor, isNightPhase, hasItem, HOTBAR_SIZE } from './config.js';
 import { pushLog, showHint, updateEquipUI, updateHUD, showInteractPrompt, hideInteractPrompt, isInventoryOpen } from './ui.js';
 import { SoundFX } from './audio.js';
 import { collectTreeResource, collectRockResource, collectBushResource, consumeBerry, collectStick, collectStone } from './inventory.js';
@@ -37,6 +37,8 @@ export function resetPlayer() {
   state.player.staminaCooldown = 0;
   state.player.staminaRegenDelay = 0;
   state.player.inventory = [];
+  state.player.hotbar = new Array(HOTBAR_SIZE).fill(null);
+  state.player.invOrder = [];
   state.player.equippedTool = null;
   state.player.attackDamage = 12;
   state.player.attackRange = 34;
