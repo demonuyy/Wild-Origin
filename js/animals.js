@@ -68,6 +68,10 @@ export function updateDeer(dt) {
       const ang = baseAng + (d.wobble || (d.wobble = rand(-0.5, 0.5)));
       d.x += Math.cos(ang) * d.speed * 1.5 * dt;
       d.y += Math.sin(ang) * d.speed * 1.5 * dt;
+      // Encara hacia donde corre (solo si el movimiento tiene una componente
+      // horizontal clara, para que no tiemble entre lados al huir casi
+      // derecho hacia arriba/abajo).
+      if (Math.abs(Math.cos(ang)) > 0.15) d.facing = Math.cos(ang) >= 0 ? 1 : -1;
       maybeSpawnWaterRipple(d, dt);
       d.footstepTimer = (d.footstepTimer || 0) - dt;
       if (d.footstepTimer <= 0) {
@@ -111,41 +115,105 @@ export function updateDeer(dt) {
         const ang = Math.atan2(d.wanderTarget.y - d.y, d.wanderTarget.x - d.x);
         d.x += Math.cos(ang) * d.speed * 0.4 * dt;
         d.y += Math.sin(ang) * d.speed * 0.4 * dt;
+        if (Math.abs(Math.cos(ang)) > 0.15) d.facing = Math.cos(ang) >= 0 ? 1 : -1;
         maybeSpawnWaterRipple(d, dt);
       }
     }
   }
 }
 
+// Paletas de pelaje del ciervo (ver DEER_VARIANTS en world.js/generateChunk):
+// cervato claro (original), pardo oscuro y dorado pálido. `rump` es la mancha
+// clara trasera típica de un ciervo, un poco más clara/oscura según la paleta
+// para que siga contrastando con el resto del cuerpo.
+const DEER_PALETTES = [
+  { light: '#c19467', dark: '#8a6440', rump: 'rgba(255,235,215,0.45)' },
+  { light: '#9c7248', dark: '#664728', rump: 'rgba(235,210,180,0.4)' },
+  { light: '#dcbb87', dark: '#a9895a', rump: 'rgba(255,244,225,0.5)' }
+];
+
 export function drawDeer(d, cam, ctx) {
   const sx = d.x - cam.x;
   const sy = d.y - cam.y;
+  const pal = DEER_PALETTES[d.variant || 0] || DEER_PALETTES[0];
+  const moving = d.state === 'flee' || d.state === 'wander';
+  const grazing = d.state === 'graze';
+  const dir = d.facing || 1;
+  // Balanceo simple de patas: solo cuando se está moviendo, para que un
+  // ciervo parado pastando no tiemble en el lugar.
+  const stride = moving ? Math.sin(state.elapsed * (d.state === 'flee' ? 12 : 6) + d.x * 0.1) * 2.4 : 0;
+  // Respiración sutil (todo el cuerpo sube/baja de a poco) y, si está
+  // pastando, la cabeza baja y sube cada tanto como si mordisqueara.
+  const breathe = Math.sin(state.elapsed * 2.2 + d.x * 0.3) * (grazing ? 0.6 : 0.3);
+  const headDip = grazing ? (Math.sin(state.elapsed * 0.8 + d.x * 0.2) * 0.5 + 0.5) * 2.6 : 0;
+  const tailWag = Math.sin(state.elapsed * (moving ? 9 : 3) + d.y * 0.2) * (moving ? 1 : 0.5);
+
+  // sx/sy quedan como origen local; ctx.scale(dir,1) espeja todo el dibujo
+  // cuando el ciervo se mueve hacia la izquierda, así deja de mirar siempre
+  // para el mismo lado.
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.scale(dir, 1);
+
   ctx.fillStyle = 'rgba(0,0,0,0.22)';
   ctx.beginPath();
-  ctx.ellipse(sx, sy + 8, 10, 4, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 8, 10, 4, 0, 0, Math.PI * 2);
   ctx.fill();
-  const furG = ctx.createRadialGradient(sx - 3, sy - 3, 1, sx, sy, 12);
-  furG.addColorStop(0, '#c19467');
-  furG.addColorStop(1, '#8a6440');
+
+  // Patas: dos pares con desfase de zancada opuesto entre sí.
+  ctx.strokeStyle = pal.dark;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  [[-5, stride], [1, -stride], [5, -stride * 0.7], [-1, stride * 0.7]].forEach(([lx, off]) => {
+    ctx.beginPath();
+    ctx.moveTo(lx, 3 + breathe * 0.3);
+    ctx.lineTo(lx + off * 0.3, 9);
+    ctx.stroke();
+  });
+
+  // Cola cortita, con un leve meneo constante (más rápido si está corriendo).
+  ctx.save();
+  ctx.translate(-9, -1 + breathe * 0.2);
+  ctx.rotate(tailWag * 0.3);
+  ctx.fillStyle = pal.rump;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 2.4, 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  const bodyY = breathe * 0.4;
+  const furG = ctx.createRadialGradient(-3, bodyY - 3, 1, 0, bodyY, 12);
+  furG.addColorStop(0, pal.light);
+  furG.addColorStop(1, pal.dark);
   ctx.fillStyle = furG;
   ctx.beginPath();
-  ctx.ellipse(sx, sy, 11, 7, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, bodyY, 11, 7, 0, 0, Math.PI * 2);
   ctx.fill();
+
+  // Cabeza: baja un poco al pastar (headDip) en vez de quedar siempre fija.
+  const headX = 8, headY = -5 + headDip + bodyY;
   ctx.fillStyle = furG;
   ctx.beginPath();
-  ctx.ellipse(sx + 8, sy - 5, 5, 4, 0, 0, Math.PI * 2);
+  ctx.ellipse(headX, headY, 5, 4, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = 'rgba(255,235,215,0.45)';
+  // Orejas.
+  ctx.fillStyle = pal.dark;
   ctx.beginPath();
-  ctx.ellipse(sx - 2, sy + 2, 3.5, 2.2, 0, 0, Math.PI * 2);
+  ctx.ellipse(headX + 1, headY - 4, 1.8, 3, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = pal.rump;
+  ctx.beginPath();
+  ctx.ellipse(-2, bodyY + 2, 3.5, 2.2, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = 'rgba(20,15,10,0.8)';
   ctx.beginPath();
-  ctx.arc(sx + 10, sy - 6, 1, 0, Math.PI * 2);
+  ctx.arc(headX + 2, headY - 1, 1, 0, Math.PI * 2);
   ctx.fill();
+  ctx.restore();
   // Barra de vida: solo aparece si ya recibió algún golpe (igual criterio
   // visual que se usa con el lobo, pero sin mostrarla todo el tiempo ya que
-  // el ciervo no es hostil).
+  // el ciervo no es hostil). Se dibuja después de restore() para que no se
+  // espeje junto con el cuerpo.
   if (d.health < d.maxHealth) {
     ctx.strokeStyle = 'rgba(203,216,195,0.6)';
     ctx.strokeRect(sx - 13, sy - 18, 26 * (d.health / d.maxHealth), 3);

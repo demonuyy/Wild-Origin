@@ -73,6 +73,7 @@ export function updateWolves(dt) {
       if (willMove) {
         w.x += Math.cos(ang) * w.speed * dt;
         w.y += Math.sin(ang) * w.speed * dt;
+        if (Math.abs(Math.cos(ang)) > 0.15) w.facing = Math.cos(ang) >= 0 ? 1 : -1;
         maybeSpawnWaterRipple(w, dt);
       }
       if (distToPlayer < 30 && w.attackCd <= 0) {
@@ -106,6 +107,7 @@ export function updateWolves(dt) {
         const ang = Math.atan2(w.lastSeenY - w.y, w.lastSeenX - w.x);
         w.x += Math.cos(ang) * w.speed * 0.55 * dt;
         w.y += Math.sin(ang) * w.speed * 0.55 * dt;
+        if (Math.abs(Math.cos(ang)) > 0.15) w.facing = Math.cos(ang) >= 0 ? 1 : -1;
         maybeSpawnWaterRipple(w, dt);
       }
     } else {
@@ -115,6 +117,7 @@ export function updateWolves(dt) {
       const ang = Math.atan2(w.wanderTarget.y - w.y, w.wanderTarget.x - w.x);
       w.x += Math.cos(ang) * w.speed * 0.35 * dt;
       w.y += Math.sin(ang) * w.speed * 0.35 * dt;
+      if (Math.abs(Math.cos(ang)) > 0.15) w.facing = Math.cos(ang) >= 0 ? 1 : -1;
       maybeSpawnWaterRipple(w, dt);
 
       // Aullido ambiental nocturno: solo lobos tranquilos, de a uno por vez
@@ -127,47 +130,102 @@ export function updateWolves(dt) {
   }
 }
 
+// Paletas de pelaje del lobo (ver WOLF_VARIANTS en world.js/generateChunk):
+// gris de manada (original), pardo casi negro y blanco ártico pálido. Cada
+// una da un par [claro, oscuro] que se usa para el degradé normal; en
+// persecución se oscurece más (ver `chase` abajo) para dar sensación de
+// agresividad sin perder la identidad de color del lobo.
+const WOLF_PALETTES = [
+  { light: '#87867c', dark: '#54544c', chase: ['#77746f', '#42413d'] },
+  { light: '#5c4a3a', dark: '#332619', chase: ['#4a3a2c', '#241a10'] },
+  { light: '#c9c3b0', dark: '#9c9682', chase: ['#b0a993', '#847d68'] }
+];
+
 export function drawWolf(w, cam, ctx) {
   const sx = w.x - cam.x;
   const sy = w.y - cam.y;
+  const pal = WOLF_PALETTES[w.variant || 0] || WOLF_PALETTES[0];
+  const moving = w.state === 'chase' || w.state === 'search' || w.state === 'wander';
+  const dir = w.facing || 1;
+  const stride = moving ? Math.sin(state.elapsed * (w.state === 'chase' ? 14 : 7) + w.x * 0.1) * 2.6 : 0;
+  // Oreja quieta que igual se mueve un poco (atenta al entorno) cuando no
+  // está corriendo, para que un lobo parado no se vea congelado del todo.
+  const earTwitch = moving ? 0 : Math.sin(state.elapsed * 1.6 + w.y * 0.2) * 0.08;
+
+  // sx/sy quedan como origen local; ctx.scale(dir,1) espeja todo el dibujo
+  // cuando el lobo se mueve hacia la izquierda, así deja de mirar siempre
+  // para el mismo lado.
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.scale(dir, 1);
+
   ctx.fillStyle = 'rgba(0,0,0,0.28)';
   ctx.beginPath();
-  ctx.ellipse(sx, sy + 8, 12, 4, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 8, 12, 4, 0, 0, Math.PI * 2);
   ctx.fill();
-  const furG = ctx.createRadialGradient(sx - 4, sy - 4, 2, sx, sy, 14);
+
+  // Patas y cola: dan más sensación de movimiento/acecho que el óvalo solo.
+  ctx.strokeStyle = pal.dark;
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = 'round';
+  [[-6, stride], [0, -stride], [6, -stride * 0.7], [-2, stride * 0.7]].forEach(([lx, off]) => {
+    ctx.beginPath();
+    ctx.moveTo(lx, 3);
+    ctx.lineTo(lx + off * 0.3, 10);
+    ctx.stroke();
+  });
+  ctx.save();
+  ctx.translate(-11, -1);
+  // Cola: baja y quieta al perseguir, más levantada al deambular, con un
+  // leve meneo constante en vez de quedar clavada en un solo ángulo.
+  const tailWag = Math.sin(state.elapsed * (moving ? 8 : 2.5) + w.x * 0.15) * (moving ? 0.12 : 0.2);
+  ctx.rotate((w.state === 'chase' ? -0.15 : 0.35) + tailWag);
+  ctx.fillStyle = pal.dark;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 5, 1.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  const furG = ctx.createRadialGradient(-4, -4, 2, 0, 0, 14);
   if (w.state === 'chase') {
-    furG.addColorStop(0, '#77746f');
-    furG.addColorStop(1, '#42413d');
+    furG.addColorStop(0, pal.chase[0]);
+    furG.addColorStop(1, pal.chase[1]);
   } else {
-    furG.addColorStop(0, '#87867c');
-    furG.addColorStop(1, '#54544c');
+    furG.addColorStop(0, pal.light);
+    furG.addColorStop(1, pal.dark);
   }
   ctx.fillStyle = furG;
   ctx.beginPath();
-  ctx.ellipse(sx, sy, 12, 7, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, 12, 7, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = furG;
   ctx.beginPath();
-  ctx.ellipse(sx + 9, sy - 5, 5, 4, 0, 0, Math.PI * 2);
+  ctx.ellipse(9, -5, 5, 4, 0, 0, Math.PI * 2);
   ctx.fill();
-  // Orejas.
+  // Oreja: leve rotación idle (earTwitch) para que no quede congelada.
+  ctx.save();
+  ctx.translate(9, -8);
+  ctx.rotate(earTwitch);
+  ctx.fillStyle = pal.dark;
   ctx.beginPath();
-  ctx.moveTo(sx + 7, sy - 8);
-  ctx.lineTo(sx + 9, sy - 13);
-  ctx.lineTo(sx + 11, sy - 8);
+  ctx.moveTo(-2, 0);
+  ctx.lineTo(0, -5);
+  ctx.lineTo(2, 0);
   ctx.closePath();
   ctx.fill();
+  ctx.restore();
   if (w.state === 'chase' || w.state === 'search') {
     ctx.fillStyle = w.state === 'chase' ? '#ff4433' : '#ffb733';
     ctx.beginPath();
-    ctx.arc(sx + 11, sy - 6, 1.6, 0, Math.PI * 2);
+    ctx.arc(11, -6, 1.6, 0, Math.PI * 2);
     ctx.fill();
   } else {
     ctx.fillStyle = 'rgba(20,15,10,0.8)';
     ctx.beginPath();
-    ctx.arc(sx + 11, sy - 6, 1.2, 0, Math.PI * 2);
+    ctx.arc(11, -6, 1.2, 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.restore();
   ctx.strokeStyle = 'rgba(203,216,195,0.6)';
   ctx.strokeRect(sx - 14, sy - 20, 28 * (w.health / w.maxHealth), 3);
 }

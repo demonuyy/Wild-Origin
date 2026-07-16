@@ -49,6 +49,26 @@ const NOISE_SCALE = 0.0035;
 
 function chunkKeyOf(cx, cy) { return cx + ',' + cy; }
 
+// Cantidad de paletas de color distintas por tipo de entidad (la variante
+// puntual de cada una se sortea abajo, en generateChunk, y se guarda en su
+// campo `variant`). Los arrays de paletas en sí viven junto a cada función
+// drawX correspondiente (TREE_PALETTES en este archivo, WOLF_PALETTES en
+// enemies.js, DEER_PALETTES en animals.js) para no crear un import
+// circular entre world.js y esos dos módulos; si se agrega o saca una
+// paleta de esos arrays, actualizar el número acá para que siga
+// coincidiendo. Las rocas NO tienen variante de color (todas usan
+// ROCK_PALETTE, una sola), solo de forma (ver ROCK_SHAPES).
+const TREE_VARIANTS = 3;
+const BUSH_VARIANTS = 2;
+const WOLF_VARIANTS = 3;
+const DEER_VARIANTS = 3;
+
+// Cantidad de siluetas distintas por tipo de entidad (independiente del
+// color): TREE_SHAPES en drawTree, ROCK_SHAPES en drawRock. Se sortea junto
+// con `variant` en generateChunk y viaja en el campo `shape` de la entidad.
+const TREE_SHAPES = 3;
+const ROCK_SHAPES = 3;
+
 // Siembra las funciones de ruido a partir de state.worldSeed. La usan tanto
 // generateWorld() (mundo nuevo) como restoreChunksFromSave() (mundo cargado
 // desde una partida guardada, que reutiliza la misma semilla).
@@ -133,9 +153,15 @@ function generateChunk(cx, cy) {
   // OJO: la fórmula de densidad de abajo acepta en promedio ~45% de los intentos
   // (no un 5-10% como parecería a simple vista), así que estos números ya están
   // calibrados para dar una densidad similar a la del mapa original por chunk.
-  tryPlace(trees, 18, forestNoise, (x, y) => ({ x, y, hits: 3, maxHits: 3, size: crand(0.85, 1.3), sway: crand(0, Math.PI * 2) }));
-  tryPlace(rocks, 9, rockNoise, (x, y) => ({ x, y, hits: 4, maxHits: 4, size: crand(0.8, 1.25) }));
-  tryPlace(bushes, 7, bushNoise, (x, y) => ({ x, y, stock: 3, maxStock: 3, regrowTimer: 0, size: crand(0.85, 1.2) }));
+  // `variant` elige la paleta de color (no aplica a rocas, que son todas del
+  // mismo color) y `shape` elige la silueta, en drawTree/drawRock/drawBush
+  // (ver TREE_PALETTES/ROCK_PALETTE/BUSH_PALETTES y TREE_SHAPES/ROCK_SHAPES
+  // más abajo). Se deciden acá, una sola vez por entidad y a partir del rnd
+  // determinístico del chunk, así que cada árbol/roca/arbusto se ve siempre
+  // igual al recargar la zona.
+  tryPlace(trees, 18, forestNoise, (x, y) => ({ x, y, hits: 3, maxHits: 3, size: crand(0.85, 1.3), sway: crand(0, Math.PI * 2), variant: Math.floor(rnd() * TREE_VARIANTS), shape: Math.floor(rnd() * TREE_SHAPES) }));
+  tryPlace(rocks, 9, rockNoise, (x, y) => ({ x, y, hits: 4, maxHits: 4, size: crand(0.8, 1.25), shape: Math.floor(rnd() * ROCK_SHAPES) }));
+  tryPlace(bushes, 7, bushNoise, (x, y) => ({ x, y, stock: 3, maxStock: 3, regrowTimer: 0, size: crand(0.85, 1.2), variant: Math.floor(rnd() * BUSH_VARIANTS) }));
 
   // Palos y piedras sueltos: no dependen del ruido de bosque/roca (se pueden
   // encontrar en cualquier parte) porque son el recurso inicial para poder
@@ -164,13 +190,13 @@ function generateChunk(cx, cy) {
     const x = ox + crand(0, CHUNK_SIZE);
     const y = oy + crand(0, CHUNK_SIZE);
     if (!nearSpawn(x, y)) {
-      wolves.push({ x, y, health: 34, maxHealth: 34, speed: crand(95, 125), state: 'wander', wanderTarget: null, attackCd: 0, alertR: 110, chunkKey: key });
+      wolves.push({ x, y, health: 34, maxHealth: 34, speed: crand(95, 125), state: 'wander', wanderTarget: null, attackCd: 0, alertR: 110, chunkKey: key, variant: Math.floor(rnd() * WOLF_VARIANTS) });
     }
   }
   if (rnd() < 0.4) {
     const x = ox + crand(0, CHUNK_SIZE);
     const y = oy + crand(0, CHUNK_SIZE);
-    if (!nearSpawn(x, y)) deer.push({ x, y, speed: 110, health: 18, maxHealth: 18, wanderTarget: null, state: 'graze', grazeTimer: crand(2, 6), alertCd: 0, chunkKey: key });
+    if (!nearSpawn(x, y)) deer.push({ x, y, speed: 110, health: 18, maxHealth: 18, wanderTarget: null, state: 'graze', grazeTimer: crand(2, 6), alertCd: 0, chunkKey: key, variant: Math.floor(rnd() * DEER_VARIANTS) });
   }
   for (let i = 0; i < 22; i++) {
     grassDecor.push({ x: ox + crand(0, CHUNK_SIZE), y: oy + crand(0, CHUNK_SIZE), s: crand(0.5, 1.3), rot: crand(0, Math.PI * 2), chunkKey: key });
@@ -516,53 +542,113 @@ export function drawPonds(ctx, cam, viewW, viewH) {
   }
 }
 
+// Paletas de árbol (ver TREE_VARIANTS en generateChunk, más arriba): cada
+// una define el degradé del tronco (3 paradas) y el degradé de cada copa de
+// follaje (3 paradas: luz/medio/sombra). El índice de `t.variant` elige cuál
+// usar; se sortea una sola vez por árbol al generarlo, así que un mismo
+// árbol nunca cambia de paleta entre frames.
+const TREE_PALETTES = [
+  { trunk: ['#3a2a1c', '#5a4530', '#3a2a1c'], leaf: ['#4f7a42', '#33532c', '#22391e'] }, // pino de bosque (original)
+  { trunk: ['#4a3826', '#6d5236', '#4a3826'], leaf: ['#6e9750', '#4c7539', '#345423'] }, // álamo/verde claro
+  { trunk: ['#4c3220', '#70502f', '#4c3220'], leaf: ['#af7d3c', '#8c5c26', '#6b4318'] }  // otoñal
+];
+
 export function drawTree(t, cam, ctx) {
   const sx = t.x - cam.x;
   const sy = t.y - cam.y;
   const s = t.size;
   const wind = Math.sin(state.elapsed * 0.9 + t.sway) * 3.5 * s;
+  const pal = TREE_PALETTES[t.variant || 0] || TREE_PALETTES[0];
+  const shape = t.shape || 0;
+  // Cada silueta ajusta alto/ancho de tronco y armado del follaje; el color
+  // (pal) es independiente y se aplica igual sobre cualquiera de las tres.
+  const trunkH = shape === 1 ? 30 * s : shape === 2 ? 20 * s : 26 * s;
+  const trunkTopY = shape === 1 ? -8 * s : shape === 2 ? -3 * s : -6 * s;
+  const canopyY = shape === 1 ? -16 * s : shape === 2 ? -16 * s : -22 * s;
 
   // Sombra proyectada, un poco alargada para dar sensación de altura.
   ctx.fillStyle = 'rgba(0,0,0,0.28)';
   ctx.beginPath();
-  ctx.ellipse(sx + 4, sy + 6, 19 * s, 7 * s, 0, 0, Math.PI * 2);
+  ctx.ellipse(sx + 4, sy + 6, (shape === 2 ? 23 : 19) * s, 7 * s, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // Tronco con luz lateral (gradiente) y un par de líneas de corteza.
   const trunkG = ctx.createLinearGradient(sx - 4 * s, 0, sx + 4 * s, 0);
-  trunkG.addColorStop(0, '#3a2a1c');
-  trunkG.addColorStop(0.5, '#5a4530');
-  trunkG.addColorStop(1, '#3a2a1c');
+  trunkG.addColorStop(0, pal.trunk[0]);
+  trunkG.addColorStop(0.5, pal.trunk[1]);
+  trunkG.addColorStop(1, pal.trunk[2]);
   ctx.fillStyle = trunkG;
-  ctx.fillRect(sx - 4 * s, sy - 6 * s, 8 * s, 26 * s);
+  ctx.fillRect(sx - 4 * s, sy + trunkTopY, 8 * s, trunkH);
   ctx.strokeStyle = 'rgba(0,0,0,0.2)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(sx - 1.5 * s, sy - 5 * s);
-  ctx.lineTo(sx - 1.5 * s, sy + 18 * s);
+  ctx.moveTo(sx - 1.5 * s, sy + trunkTopY + 1 * s);
+  ctx.lineTo(sx - 1.5 * s, sy + trunkTopY + trunkH - 6 * s);
   ctx.stroke();
 
-  // Follaje: varias copas superpuestas con gradiente radial (más clara donde
-  // pega la luz) y una leve oscilación de viento aplicada al conjunto.
+  // Follaje: la silueta cambia según `shape`, el degradé de color según `pal`.
   ctx.save();
-  ctx.translate(sx, sy - 22 * s);
+  ctx.translate(sx, sy + canopyY);
   ctx.rotate(wind * 0.01);
-  const blobs = [
-    { x: 0, y: 2 * s, r: 22 * s },
-    { x: -12 * s, y: -6 * s, r: 16 * s },
-    { x: 13 * s, y: -4 * s, r: 15 * s },
-    { x: 2 * s, y: -16 * s, r: 13 * s }
-  ];
-  for (const bl of blobs) {
-    const bx = bl.x + wind;
-    const fg = ctx.createRadialGradient(bx - bl.r * 0.35, bl.y - bl.r * 0.35, bl.r * 0.15, bx, bl.y, bl.r);
-    fg.addColorStop(0, '#4f7a42');
-    fg.addColorStop(0.55, '#33532c');
-    fg.addColorStop(1, '#22391e');
-    ctx.fillStyle = fg;
-    ctx.beginPath();
-    ctx.arc(bx, bl.y, bl.r, 0, Math.PI * 2);
-    ctx.fill();
+
+  const leafFill = (bx, by, r) => {
+    const fg = ctx.createRadialGradient(bx - r * 0.35, by - r * 0.35, r * 0.15, bx, by, r);
+    fg.addColorStop(0, pal.leaf[0]);
+    fg.addColorStop(0.55, pal.leaf[1]);
+    fg.addColorStop(1, pal.leaf[2]);
+    return fg;
+  };
+
+  if (shape === 1) {
+    // Conífera: pino alto y angosto, tres capas triangulares apiladas con
+    // bastante superposición entre sí (y con el tronco) para que no quede
+    // ningún hueco entre niveles ni un espacio flotando sobre el tronco.
+    const tiers = [
+      { apex: -6 * s, base: 12 * s, halfW: 15 * s },   // capa de abajo, la más ancha, se mete sobre el tronco
+      { apex: -20 * s, base: -4 * s, halfW: 11 * s },  // capa del medio
+      { apex: -34 * s, base: -16 * s, halfW: 7 * s }   // capa de arriba, la más angosta
+    ];
+    for (const tier of tiers) {
+      const bx = wind;
+      ctx.fillStyle = leafFill(bx, (tier.apex + tier.base) / 2, tier.halfW * 1.15);
+      ctx.beginPath();
+      ctx.moveTo(bx, tier.apex);
+      ctx.lineTo(bx - tier.halfW, tier.base);
+      ctx.lineTo(bx + tier.halfW, tier.base);
+      ctx.closePath();
+      ctx.fill();
+    }
+  } else if (shape === 2) {
+    // Copa ancha (roble/latifoliada): una copa grande y baja con dos lóbulos
+    // laterales, más ancha que alta a diferencia de las otras dos.
+    const blobs = [
+      { x: 0, y: 4 * s, r: 24 * s },
+      { x: -18 * s, y: 2 * s, r: 15 * s },
+      { x: 18 * s, y: 2 * s, r: 15 * s },
+      { x: 0, y: -10 * s, r: 14 * s }
+    ];
+    for (const bl of blobs) {
+      const bx = bl.x + wind;
+      ctx.fillStyle = leafFill(bx, bl.y, bl.r);
+      ctx.beginPath();
+      ctx.arc(bx, bl.y, bl.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    // Original: copa redonda de bosque, cuatro blobs superpuestos.
+    const blobs = [
+      { x: 0, y: 2 * s, r: 22 * s },
+      { x: -12 * s, y: -6 * s, r: 16 * s },
+      { x: 13 * s, y: -4 * s, r: 15 * s },
+      { x: 2 * s, y: -16 * s, r: 13 * s }
+    ];
+    for (const bl of blobs) {
+      const bx = bl.x + wind;
+      ctx.fillStyle = leafFill(bx, bl.y, bl.r);
+      ctx.beginPath();
+      ctx.arc(bx, bl.y, bl.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
   ctx.restore();
 
@@ -572,26 +658,61 @@ export function drawTree(t, cam, ctx) {
   }
 }
 
+// Color único de roca: ya no varía por instancia (antes tenía 3 paletas,
+// ahora todas usan esta). La variedad visual entre rocas viene de la forma
+// (ver ROCK_SHAPES en generateChunk y `shape` más abajo), no del color.
+const ROCK_PALETTE = ['#98978c', '#75746a', '#4c4b44'];
+
+// Siluetas de roca: cada una define el polígono principal, un polígono de
+// brillo más chico (la cara que pega la luz) y el semieje del óvalo de
+// sombra proyectada. `shape` elige cuál usar; se sortea una sola vez por
+// roca al generarla.
+function rockShapePoints(shape, s) {
+  if (shape === 1) {
+    // Roca redondeada, en forma de bulto (más puntos = silueta más curva),
+    // baja y compacta, sin ningún pico hacia arriba.
+    return {
+      body: [[-12, 7], [-13, -2], [-7, -9], [2, -11], [9, -7], [13, -1], [10, 7], [2, 10], [-5, 10]],
+      highlight: [[-7, -9], [2, -11], [-2, -3]],
+      shadowRx: 15, shadowRy: 6
+    };
+  }
+  if (shape === 2) {
+    // Roca plana y ancha.
+    return {
+      body: [[-18, 6], [-14, -4], [-2, -9], [10, -7], [18, 2], [12, 9], [-6, 10]],
+      highlight: [[-14, -4], [-2, -9], [4, -3]],
+      shadowRx: 19, shadowRy: 6
+    };
+  }
+  // Original: bloque angular de tamaño medio.
+  return {
+    body: [[-14, 4], [-8, -10], [4, -14], [14, -2], [8, 8]],
+    highlight: [[-8, -10], [4, -14], [-2, -4]],
+    shadowRx: 16, shadowRy: 6
+  };
+}
+
 export function drawRock(r, cam, ctx) {
   const sx = r.x - cam.x;
   const sy = r.y - cam.y;
   const s = r.size;
+  const shp = rockShapePoints(r.shape || 0, s);
   ctx.fillStyle = 'rgba(0,0,0,0.28)';
   ctx.beginPath();
-  ctx.ellipse(sx + 2, sy + 6, 16 * s, 6 * s, 0, 0, Math.PI * 2);
+  ctx.ellipse(sx + 2, sy + 6, shp.shadowRx * s, shp.shadowRy * s, 0, 0, Math.PI * 2);
   ctx.fill();
 
   const rg = ctx.createLinearGradient(sx - 14 * s, sy - 14 * s, sx + 10 * s, sy + 8 * s);
-  rg.addColorStop(0, '#98978c');
-  rg.addColorStop(0.5, '#75746a');
-  rg.addColorStop(1, '#4c4b44');
+  rg.addColorStop(0, ROCK_PALETTE[0]);
+  rg.addColorStop(0.5, ROCK_PALETTE[1]);
+  rg.addColorStop(1, ROCK_PALETTE[2]);
   ctx.fillStyle = rg;
   ctx.beginPath();
-  ctx.moveTo(sx - 14 * s, sy + 4 * s);
-  ctx.lineTo(sx - 8 * s, sy - 10 * s);
-  ctx.lineTo(sx + 4 * s, sy - 14 * s);
-  ctx.lineTo(sx + 14 * s, sy - 2 * s);
-  ctx.lineTo(sx + 8 * s, sy + 8 * s);
+  shp.body.forEach(([px, py], i) => {
+    const fn = i === 0 ? 'moveTo' : 'lineTo';
+    ctx[fn](sx + px * s, sy + py * s);
+  });
   ctx.closePath();
   ctx.fill();
 
@@ -607,9 +728,10 @@ export function drawRock(r, cam, ctx) {
 
   ctx.fillStyle = 'rgba(255,255,255,0.16)';
   ctx.beginPath();
-  ctx.moveTo(sx - 8 * s, sy - 10 * s);
-  ctx.lineTo(sx + 4 * s, sy - 14 * s);
-  ctx.lineTo(sx - 2 * s, sy - 4 * s);
+  shp.highlight.forEach(([px, py], i) => {
+    const fn = i === 0 ? 'moveTo' : 'lineTo';
+    ctx[fn](sx + px * s, sy + py * s);
+  });
   ctx.closePath();
   ctx.fill();
 
@@ -687,10 +809,18 @@ export function drawStone(s, cam, ctx) {
   ctx.restore();
 }
 
+// Paletas de arbusto (ver BUSH_VARIANTS en generateChunk): verde de bosque
+// (original) y un tono más seco/amarillento para dar variedad de matorral.
+const BUSH_PALETTES = [
+  ['#4d6d3f', '#2c4225'],
+  ['#6b7a3a', '#404f1e']
+];
+
 export function drawBush(b, cam, ctx) {
   const sx = b.x - cam.x;
   const sy = b.y - cam.y;
   const s = b.size;
+  const pal = BUSH_PALETTES[b.variant || 0] || BUSH_PALETTES[0];
   const wind = Math.sin(state.elapsed * 1.4 + b.x * 0.05) * 1.4;
   ctx.fillStyle = 'rgba(0,0,0,0.22)';
   ctx.beginPath();
@@ -701,8 +831,8 @@ export function drawBush(b, cam, ctx) {
     const by = sy + oy * s - 6 * s;
     const r = 10 * s;
     const bg = ctx.createRadialGradient(bx - r * 0.3, by - r * 0.3, r * 0.1, bx, by, r);
-    bg.addColorStop(0, '#4d6d3f');
-    bg.addColorStop(1, '#2c4225');
+    bg.addColorStop(0, pal[0]);
+    bg.addColorStop(1, pal[1]);
     ctx.fillStyle = bg;
     ctx.beginPath();
     ctx.arc(bx, by, r, 0, Math.PI * 2);
