@@ -1,4 +1,4 @@
-import { state, capFor, invTotal, clamp, hasItem, addItem, removeItem, ITEMS } from './config.js';
+import { state, capFor, invTotal, clamp, hasItem, addItem, removeItem, ITEMS, damageTool } from './config.js';
 import { SoundFX } from './audio.js';
 import { pushLog, showHint } from './ui.js';
 import { removeEntity } from './world.js';
@@ -28,6 +28,11 @@ export function collectTreeResource(t) {
   t.hits -= 2;
   SoundFX.chop();
   pushLog(`Talaste madera (+${gained})`);
+  // El hacha se gasta con cada golpe, se haya talado el árbol entero o no.
+  if (damageTool('axe', 1)) {
+    SoundFX.craftFail();
+    pushLog('El hacha se rompió');
+  }
   if (t.hits <= 0) {
     removeEntity('trees', t);
   }
@@ -57,6 +62,11 @@ export function collectRockResource(r) {
   r.hits -= 2;
   SoundFX.mine();
   pushLog(`Picaste piedra (+${gained})`);
+  // El pico se gasta con cada golpe, se haya roto la roca entera o no.
+  if (damageTool('pickaxe', 1)) {
+    SoundFX.craftFail();
+    pushLog('El pico se rompió');
+  }
   if (r.hits <= 0) {
     removeEntity('rocks', r);
   }

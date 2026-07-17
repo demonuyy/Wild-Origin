@@ -1,7 +1,7 @@
 import './helpers/dom-shim.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { state, BASE_CAP, BACKPACK_BONUS, capFor, addItem, countItem, hasItem } from '../js/config.js';
+import { state, capFor, addItem, countItem, hasItem } from '../js/config.js';
 import { resetState } from './helpers/reset-state.js';
 import {
   tryCraftSpear,
@@ -120,14 +120,14 @@ test('tryPlaceCampfire coloca la fogata en la posición actual del jugador', () 
   assert.equal(countItem('wood'), 0);
 });
 
-test('tryCraftBackpack aumenta la capacidad efectiva vía capFor()', () => {
+test('tryCraftBackpack no cambia capFor() (capacidad sin límite) pero sigue craftéandose', () => {
   resetState();
-  assert.equal(capFor(), BASE_CAP);
+  assert.equal(capFor(), Infinity);
   addItem('wood', 8);
   addItem('stone', 4);
   tryCraftBackpack();
   assert.equal(hasItem('backpack'), true);
-  assert.equal(capFor(), BASE_CAP + BACKPACK_BONUS);
+  assert.equal(capFor(), Infinity);
 });
 
 test('tryPlaceShelter requiere 15 madera y 8 piedra', () => {

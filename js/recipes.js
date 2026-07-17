@@ -39,3 +39,27 @@ export function costHint(recipeId) {
   if (r.cost.stone) parts.push(`${r.cost.stone} piedra`);
   return `<b>${r.label}:</b> Necesitás ${parts.join(' y ')}`;
 }
+
+// ---------- Reparación de herramientas ----------
+// El costo de reparar es la mitad del costo de craftearla de cero
+// (redondeado hacia arriba), calculado siempre a partir de RECIPES: si el
+// día de mañana cambia el costo de craftear el hacha, el de repararla se
+// actualiza solo, sin tocar este archivo.
+export function repairCost(id) {
+  const r = RECIPES[id];
+  if (!r) return {};
+  const cost = {};
+  for (const [resId, qty] of Object.entries(r.cost)) {
+    if (qty > 0) cost[resId] = Math.ceil(qty / 2);
+  }
+  return cost;
+}
+
+export function repairHint(id) {
+  const r = RECIPES[id];
+  const cost = repairCost(id);
+  const parts = [];
+  if (cost.wood) parts.push(`${cost.wood} madera`);
+  if (cost.stone) parts.push(`${cost.stone} piedra`);
+  return `<b>Reparar ${r.label.toLowerCase()}:</b> Necesitás ${parts.join(' y ')}`;
+}

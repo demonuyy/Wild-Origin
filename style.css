@@ -121,7 +121,8 @@
      guardarla, a diferencia de "filled" a secas. */
   .hotSlot.active{border-color:rgba(255,224,120,.9);background:rgba(120,95,40,.35);box-shadow:0 0 10px rgba(255,224,120,.45);cursor:pointer;}
   .hotSlot.active:hover{background:rgba(120,95,40,.5);}
-  .hotIcon{font-size:19px;line-height:1;}
+  .hotIcon{width:26px;height:26px;object-fit:contain;image-rendering:pixelated;line-height:1;}
+  .hotIcon.emojiIcon{width:auto;height:auto;font-size:19px;}
   .hotKey{position:absolute;top:2px;left:5px;font-size:9px;opacity:.7;letter-spacing:.5px;}
   .hotCost{font-size:8.5px;opacity:.8;margin-top:3px;letter-spacing:.3px;}
 
@@ -146,7 +147,8 @@
   /* Casilla de inventario recibiendo un item arrastrado (desde otra casilla
      del inventario, para reordenar, o desde la hotbar para desasignarlo). */
   .invSlot2.dragOver{border-color:rgba(255,224,120,.95);box-shadow:0 0 12px rgba(255,224,120,.6);}
-  .invIcon2{font-size:24px;}
+  .invIcon2{width:36px;height:36px;object-fit:contain;image-rendering:pixelated;}
+  .invIcon2.emojiIcon{width:auto;height:auto;font-size:24px;}
   .stackCount{position:absolute;right:4px;bottom:2px;font-size:11px;font-weight:bold;color:var(--mist);text-shadow:0 1px 2px rgba(0,0,0,.9);}
   .invHint{margin-top:16px;font-size:10.5px;opacity:.55;letter-spacing:.5px;}
   .invHint b{color:var(--ember-glow);}
@@ -170,8 +172,27 @@
   .craftSlot.disabled:hover{background:rgba(203,216,195,.06);}
   .craftSlot.active{border-color:rgba(255,224,120,.9);background:rgba(120,95,40,.35);box-shadow:0 0 10px rgba(255,224,120,.45);cursor:pointer;}
   .craftSlot.active:hover{background:rgba(120,95,40,.5);}
-  .craftIcon{font-size:20px;line-height:1;}
+
+  /* Durabilidad de lanza/hacha/pico: tira fina de color que baja de verde a
+     amarillo a rojo a medida que se gasta (durabilityBarHtml en ui.js).
+     En hotSlot/invSlot2 (casillas cuadradas chicas) va pegada abajo del
+     ícono; nunca se superpone con .stackCount porque una herramienta jamás
+     tiene ambas cosas a la vez (o apila, o tiene durabilidad, no las dos). */
+  .durabilityBar{position:absolute;left:6px;right:6px;bottom:3px;height:3px;background:rgba(0,0,0,.55);border-radius:2px;overflow:hidden;}
+  .durabilityFill{height:100%;border-radius:2px;transition:width .15s ease;}
+  .durabilityFill.high{background:#7ed957;}
+  .durabilityFill.mid{background:#ffd23f;}
+  .durabilityFill.low{background:#ff4d4d;}
+  /* En el menú de crafteo (fila horizontal, no casilla cuadrada) la barra
+     va pegada al borde inferior de toda la fila en vez de "bajo el ícono". */
+  .craftSlot .durabilityBar{left:14px;right:34px;bottom:2px;}
+  .repairBtn{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;background:rgba(255,184,92,.18);border:1px solid rgba(255,184,92,.55);border-radius:5px;cursor:pointer;}
+  .repairBtn:hover{background:rgba(255,184,92,.32);}
+  .craftIcon{width:28px;height:28px;object-fit:contain;image-rendering:pixelated;line-height:1;flex-shrink:0;}
+  .craftIcon.emojiIcon{width:auto;height:auto;font-size:20px;}
   .craftName{flex:1;font-size:13px;letter-spacing:.3px;color:var(--mist);}
   .craftCost{font-size:11px;opacity:.85;white-space:nowrap;}
+  .costIcon{width:12px;height:12px;object-fit:contain;image-rendering:pixelated;vertical-align:-2px;margin:0 1px;}
+  .costIcon.emojiIcon{width:auto;height:auto;font-size:11px;vertical-align:baseline;}
 
   .hidden{display:none !important;}

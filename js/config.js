@@ -29,17 +29,26 @@ export const HOTBAR_SIZE = 6;
 //  - 'resource' / 'food': se apilan hasta `stack` y cuentan para invTotal()/capFor().
 //  - 'tool': nunca se apilan (stack: 1), no ocupan capacidad de inventario
 //    (igual que antes: las herramientas nunca sumaban a invTotal()).
+// `image`: ruta al ícono real del ítem (assets/images/items/). Se usa en vez
+// del emoji de `icon` en toda la UI (hotbar, inventario, menú de crafteo);
+// `icon` se conserva como fallback/alt por si a algún ítem futuro todavía no
+// se le sumó el arte.
+const IMG_BASE = 'assets/images/items/';
+// `durability`: usos antes de romperse (ver damageTool en este archivo).
+// Solo la tienen las herramientas que se USAN activamente (golpear con la
+// lanza, talar con el hacha, minar con el pico); la mochila es pasiva y no
+// se gasta, así que no tiene este campo.
 export const ITEMS = {
-  wood: { label: 'Madera', icon: '🌲', stack: STACK_SIZE, category: 'resource' },
-  stone: { label: 'Piedra', icon: '🪨', stack: STACK_SIZE, category: 'resource' },
+  wood: { label: 'Madera', icon: '🌲', image: IMG_BASE + 'wood.png', stack: STACK_SIZE, category: 'resource' },
+  stone: { label: 'Piedra', icon: '🪨', image: IMG_BASE + 'stone.png', stack: STACK_SIZE, category: 'resource' },
   // `hunger`: cuánta hambre restaura comer 1 unidad (ver consumeFood en
   // inventory.js). Ítems futuros de comida (v0.3+: carne cocida, etc.) solo
   // necesitan agregar su propio valor acá.
-  berries: { label: 'Bayas', icon: '🍓', stack: STACK_SIZE, category: 'food', hunger: 22 },
-  spear: { label: 'Lanza', icon: '🔱', stack: 1, category: 'tool' },
-  axe: { label: 'Hacha', icon: '🪓', stack: 1, category: 'tool' },
-  pickaxe: { label: 'Pico', icon: '⛏️', stack: 1, category: 'tool' },
-  backpack: { label: 'Mochila', icon: '🎒', stack: 1, category: 'tool' }
+  berries: { label: 'Bayas', icon: '🍓', image: IMG_BASE + 'berries.png', stack: STACK_SIZE, category: 'food', hunger: 22 },
+  spear: { label: 'Lanza', icon: '🔱', image: IMG_BASE + 'spear.png', stack: 1, category: 'tool', durability: 25 },
+  axe: { label: 'Hacha', icon: '🪓', image: IMG_BASE + 'axe.png', stack: 1, category: 'tool', durability: 40 },
+  pickaxe: { label: 'Pico', icon: '⛏️', image: IMG_BASE + 'pickaxe.png', stack: 1, category: 'tool', durability: 40 },
+  backpack: { label: 'Mochila', icon: '🎒', image: IMG_BASE + 'backpack.png', stack: 1, category: 'tool' }
 };
 
 // Guardado con `typeof document !== 'undefined'` para que este módulo se
@@ -121,12 +130,16 @@ export const state = {
     // autoAssignHotbar). pruneHotbar() se encarga de vaciar una casilla si el
     // ítem que apuntaba se terminó (se craftea de nuevo, se come, etc.).
     hotbar: new Array(HOTBAR_SIZE).fill(null),
-    // Orden de despliegue del panel de inventario (array de ids de ITEMS).
-    // Antes el panel se armaba iterando player.inventory tal cual, así que
-    // no había forma de "mover" un ítem de lugar. getInventoryOrder() lo
-    // mantiene sincronizado (agrega ids nuevos, saca los que ya no se
-    // poseen) y reorderInventory() permite swappear dos posiciones.
-    invOrder: [],
+    // Posiciones FIJAS del panel de inventario: array indexado por slot,
+    // cada posición vale el id de ITEMS que ocupa ese lugar exacto, o
+    // null/undefined si está vacía. A diferencia del esquema viejo (una
+    // lista de tipos que se reempaquetaba sola, sin huecos), acá cada
+    // ítem se queda exactamente en el slot donde el jugador lo soltó,
+    // dejando casillas vacías de por medio si así lo arrastró. Se
+    // mantiene sincronizado con la cantidad real (state.player.inventory)
+    // via syncInventorySlots(); moveInventorySlot() es lo único que
+    // cambia una posición (arrastrar y soltar).
+    invSlots: [],
     // Herramienta actualmente "en la mano" (null, 'axe' o 'pickaxe'). Tenerla
     // en la mano (no solo poseerla) es lo que habilita talar/minar.
     equippedTool: null,
@@ -175,8 +188,22 @@ export function hasItem(id) {
 export function addItem(id, qty) {
   if (qty <= 0) return;
   const slot = findSlot(id);
-  if (slot) slot.qty += qty;
-  else state.player.inventory.push({ id, qty });
+  const isNew = !slot;
+  if (slot) {
+    slot.qty += qty;
+  } else {
+    const info = ITEMS[id];
+    const entry = { id, qty };
+    // Si el ítem tiene durability (lanza/hacha/pico), arranca al máximo.
+    if (info && info.durability) entry.durability = info.durability;
+    state.player.inventory.push(entry);
+  }
+  // Un ítem que el jugador no tenía todavía se asigna primero a la hotbar
+  // (si queda alguna casilla libre) antes que nada más: son las casillas
+  // que están siempre a la vista sin abrir el inventario, así que son las
+  // primeras en llenarse. autoAssignHotbar ya no hace nada si la hotbar
+  // está llena o el ítem ya estaba asignado (ver más abajo).
+  if (isNew) autoAssignHotbar(id);
 }
 
 export function removeItem(id, qty) {
@@ -189,8 +216,59 @@ export function removeItem(id, qty) {
   }
 }
 
+// ---------- Durabilidad de herramientas ----------
+// Solo lanza/hacha/pico tienen `durability` en ITEMS (ver más arriba), así
+// que solo ellas terminan con un campo `durability` en su slot de
+// inventario (ver addItem). Como el juego nunca deja tener dos unidades de
+// la misma herramienta a la vez (crafting.js: si ya la tenés, craftear la
+// equipa en vez de duplicarla), no hace falta manejar varias instancias
+// con desgaste independiente: hay un único slot por herramienta.
+export function getDurability(id) {
+  const slot = findSlot(id);
+  return slot && typeof slot.durability === 'number' ? slot.durability : null;
+}
+
+export function maxDurability(id) {
+  return (ITEMS[id] && ITEMS[id].durability) || null;
+}
+
+// Gasta `amount` usos de la herramienta (se llama después de un golpe que
+// realmente conectó: talar, minar, o pegarle a algo con la lanza). Si llega
+// a 0 se rompe: se saca del inventario entero (removeItem no alcanza
+// porque no hay noción de "cantidad restante", es un objeto único que deja
+// de existir) y se desequipa si la tenía puesta. pruneHotbar() (llamado en
+// cada render de la hotbar) se encarga solo de vaciar la casilla que
+// apuntaba a ella. Devuelve true si se rompió recién con este golpe, para
+// que quien llama pueda avisarle al jugador con un mensaje distinto.
+export function damageTool(id, amount = 1) {
+  const slot = findSlot(id);
+  if (!slot || typeof slot.durability !== 'number') return false;
+  slot.durability = Math.max(0, slot.durability - amount);
+  if (slot.durability <= 0) {
+    state.player.inventory = state.player.inventory.filter(s => s !== slot);
+    if (state.player.equippedTool === id) state.player.equippedTool = null;
+    return true;
+  }
+  return false;
+}
+
+// Repara al máximo. Asume que quien llama (tryRepairTool en crafting.js) ya
+// cobró el costo de reparación; acá solo se restaura el número.
+export function repairTool(id) {
+  const slot = findSlot(id);
+  const max = maxDurability(id);
+  if (!slot || !max) return;
+  slot.durability = max;
+}
+
+// El inventario ya no tiene límite de capacidad: capFor() devuelve Infinity
+// para que invTotal() >= capFor() nunca sea true (ver inventory.js). Se deja
+// BASE_CAP/BACKPACK_BONUS declarados arriba (por si en el futuro se quiere
+// volver a un límite) pero ya no se usan acá. El único límite real que queda
+// es visual: cuántos slots entran en el panel de inventario (ver
+// invSlotCount() en ui.js), que la mochila sigue agrandando.
 export function capFor() {
-  return BASE_CAP + (hasItem('backpack') ? BACKPACK_BONUS : 0);
+  return Infinity;
 }
 
 // Solo cuenta ítems "pesados" (resource/food) contra la capacidad, igual que
@@ -245,42 +323,85 @@ export function autoAssignHotbar(id) {
   if (emptyIndex !== -1) state.player.hotbar[emptyIndex] = id;
 }
 
-// ---------- Orden del panel de inventario ----------
-// Devuelve (y sincroniza) el orden de despliegue: saca ids que ya no se
-// poseen y agrega al final los que aparecieron y todavía no tienen lugar
-// asignado. Se llama cada vez que se arma la grilla del panel.
-export function getInventoryOrder() {
-  const owned = new Set(state.player.inventory.filter(s => s.qty > 0).map(s => s.id));
-  state.player.invOrder = state.player.invOrder.filter(id => owned.has(id));
-  for (const slot of state.player.inventory) {
-    if (slot.qty > 0 && !state.player.invOrder.includes(slot.id)) {
-      state.player.invOrder.push(slot.id);
+// ---------- Posiciones del panel de inventario ----------
+// Cada posición de invSlots guarda { id, qty } (no solo el id): así dos
+// casillas del MISMO ítem con cantidades distintas (ej. un stack de 25
+// madera y otro de 3) son entidades separadas de verdad, y arrastrar una
+// arriba de la otra las intercambia en vez de no hacer nada (ver
+// moveInventorySlot). slotCount lo decide ui.js (invSlotCount(): 10 slots,
+// 20 con mochila) y se le pasa acá para no importar ui.js desde config.js.
+// Se llama cada vez que se arma la grilla (buildInventorySlots en ui.js),
+// así que queda sincronizado con lo que el jugador realmente tiene:
+//  - saca las casillas de cualquier id que ya no se posea (se gastó todo),
+//  - si subió la cantidad de un id, primero RELLENA las casillas que ya
+//    tenía asignadas y no estén al tope (respeta un stack partido a mano
+//    en vez de juntarlo de nuevo) y recién si sobra abre casillas nuevas,
+//  - si bajó la cantidad, descuenta empezando por la ÚLTIMA casilla
+//    asignada (no toca la primera/principal mientras alcance con el resto).
+// Ninguna posición ya ocupada que sigue haciendo falta se mueve de lugar:
+// es lo que permite que un ítem se quede fijo donde el jugador lo dejó,
+// con huecos vacíos de por medio si así lo arrastró.
+export function syncInventorySlots(slotCount) {
+  const slots = state.player.invSlots;
+  while (slots.length < slotCount) slots.push(null);
+
+  const owned = state.player.inventory.filter(s => s.qty > 0);
+  const ownedIds = new Set(owned.map(s => s.id));
+  for (let i = 0; i < slots.length; i++) {
+    if (slots[i] && !ownedIds.has(slots[i].id)) slots[i] = null;
+  }
+
+  for (const { id, qty: totalQty } of owned) {
+    const info = ITEMS[id];
+    const stackCap = info.category === 'tool' ? 1 : info.stack;
+    const assigned = [];
+    for (let i = 0; i < slots.length; i++) if (slots[i] && slots[i].id === id) assigned.push(i);
+    const placedQty = assigned.reduce((sum, i) => sum + slots[i].qty, 0);
+    let diff = totalQty - placedQty;
+
+    if (diff > 0) {
+      for (const i of assigned) {
+        if (diff <= 0) break;
+        const room = stackCap - slots[i].qty;
+        if (room > 0) {
+          const add = Math.min(room, diff);
+          slots[i].qty += add;
+          diff -= add;
+        }
+      }
+      while (diff > 0) {
+        const add = Math.min(stackCap, diff);
+        const entry = { id, qty: add };
+        const emptyIndex = slots.indexOf(null);
+        if (emptyIndex !== -1) slots[emptyIndex] = entry; else slots.push(entry);
+        diff -= add;
+      }
+    } else if (diff < 0) {
+      let toRemove = -diff;
+      for (let k = assigned.length - 1; k >= 0 && toRemove > 0; k--) {
+        const i = assigned[k];
+        const take = Math.min(slots[i].qty, toRemove);
+        slots[i].qty -= take;
+        toRemove -= take;
+        if (slots[i].qty <= 0) slots[i] = null;
+      }
     }
   }
-  return state.player.invOrder;
 }
 
-// Intercambia la posición de dos ids en el orden del inventario (drag de un
-// item sobre otro dentro de la grilla).
-export function reorderInventory(idA, idB) {
-  const order = getInventoryOrder();
-  const iA = order.indexOf(idA);
-  const iB = order.indexOf(idB);
-  if (iA === -1 || iB === -1 || iA === iB) return;
-  [order[iA], order[iB]] = [order[iB], order[iA]];
-}
-
-// Mueve un id al final del orden del inventario. Como buildInventorySlots()
-// (ui.js) siempre dibuja los tipos poseídos en fila y las casillas vacías
-// quedan al final, arrastrar un ítem sobre una casilla vacía no tiene un
-// "índice" concreto contra el cual swappear (reorderInventory necesita otro
-// ítem del lado B) — mandarlo al final es la forma natural de "moverlo ahí".
-export function moveInventoryToEnd(id) {
-  const order = getInventoryOrder();
-  const i = order.indexOf(id);
-  if (i === -1) return;
-  order.splice(i, 1);
-  order.push(id);
+// Mueve libremente lo que haya en `fromIndex` a `toIndex`: si el destino
+// está vacío, el ítem queda exactamente ahí (y el origen pasa a estar
+// vacío); si el destino tiene otro ítem (sea otro tipo, o el mismo tipo con
+// otra cantidad, ej. 25 madera vs 3 madera), ambos intercambian posición
+// tal cual estaban. Es el único lugar que escribe en invSlots a pedido del
+// jugador (arrastrar y soltar en input.js).
+export function moveInventorySlot(fromIndex, toIndex) {
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+  const slots = state.player.invSlots;
+  while (slots.length <= Math.max(fromIndex, toIndex)) slots.push(null);
+  const tmp = slots[fromIndex];
+  slots[fromIndex] = slots[toIndex];
+  slots[toIndex] = tmp;
 }
 
 export function isNightPhase(phase) {

@@ -1,7 +1,7 @@
 import './helpers/dom-shim.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { state, BASE_CAP, addItem, countItem } from '../js/config.js';
+import { state, addItem, countItem } from '../js/config.js';
 import { resetState } from './helpers/reset-state.js';
 import {
   collectTreeResource,
@@ -69,14 +69,14 @@ test('recoger palos y piedras sueltas no requiere ninguna herramienta', () => {
   assert.equal(state.stones.includes(stone), false);
 });
 
-test('el límite de inventario (capFor) impide seguir recolectando', () => {
+test('el inventario no tiene límite de capacidad: siempre se puede seguir recolectando', () => {
   resetState();
-  addItem('wood', BASE_CAP); // inventario lleno solo con madera
+  addItem('wood', 500); // cantidad grande, ya no existe un tope que la bloquee
   const stick = { x: 0, y: 0 };
   state.sticks.push(stick);
   collectStick(stick);
-  assert.equal(countItem('wood'), BASE_CAP, 'no debería sumar de más');
-  assert.equal(state.sticks.includes(stick), true, 'el palo debería seguir en el piso');
+  assert.equal(countItem('wood'), 501, 'debería seguir sumando sin límite');
+  assert.equal(state.sticks.includes(stick), false, 'el palo debería haberse recolectado');
 });
 
 test('collectBushResource agota el arbusto y arranca el timer de regrow', () => {

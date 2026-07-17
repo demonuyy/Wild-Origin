@@ -1,7 +1,7 @@
-import { state, BACKPACK_BONUS, hasItem, addItem, ITEMS, autoAssignHotbar } from './config.js';
+import { state, hasItem, addItem, ITEMS, autoAssignHotbar, getDurability, maxDurability, repairTool } from './config.js';
 import { SoundFX } from './audio.js';
 import { pushLog, showHint, updateEquipUI } from './ui.js';
-import { RECIPES, canAfford, payCost, costHint } from './recipes.js';
+import { RECIPES, canAfford, payCost, costHint, repairCost, repairHint } from './recipes.js';
 import { consumeFood } from './inventory.js';
 
 export function tryCraftSpear() {
@@ -113,7 +113,7 @@ export function tryCraftBackpack() {
     autoAssignHotbar('backpack');
     SoundFX.craftOk();
     updateEquipUI();
-    pushLog(`Fabricaste una mochila: capacidad +${BACKPACK_BONUS}`);
+    pushLog('Fabricaste una mochila: más espacio en el inventario');
   } else {
     SoundFX.craftFail();
     showHint(costHint('backpack'));
@@ -148,5 +148,30 @@ export function tryPlaceShelter() {
   } else {
     SoundFX.craftFail();
     showHint(costHint('shelter'));
+  }
+}
+
+// ---------- Reparar herramientas ----------
+// Solo tiene sentido para lanza/hacha/pico (las únicas con `durability` en
+// ITEMS, ver config.js); id llega desde el botón de reparar del menú de
+// crafteo (ver renderCraftGrid/CRAFT_ACTIONS en ui.js/input.js), que ya se
+// encarga de no mostrarlo si no aplica.
+export function tryRepairTool(id) {
+  const max = maxDurability(id);
+  if (!hasItem(id) || !max) return;
+  const current = getDurability(id);
+  if (current >= max) {
+    showHint('Ya está en perfecto estado');
+    return;
+  }
+  const cost = repairCost(id);
+  if (canAfford(state.player, cost)) {
+    payCost(state.player, cost);
+    repairTool(id);
+    SoundFX.craftOk();
+    pushLog(`Reparaste ${ITEMS[id].label.toLowerCase()}`);
+  } else {
+    SoundFX.craftFail();
+    showHint(repairHint(id));
   }
 }

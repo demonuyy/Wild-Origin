@@ -33,7 +33,7 @@ export function resetState() {
     health: 100, hunger: 100, thirst: 100, stamina: 100,
     inventory: [],
     hotbar: new Array(HOTBAR_SIZE).fill(null),
-    invOrder: [],
+    invSlots: [],
     equippedTool: null,
     attackDamage: 12, attackRange: 34, attackCooldown: 0, hitFlash: 0
   });

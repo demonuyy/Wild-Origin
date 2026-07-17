@@ -4,10 +4,10 @@
 // game.js porque está atado a resetGame()/continueGame(), que son funciones
 // locales de ese módulo; separarlas hubiese significado pasar varios
 // callbacks de un lado a otro sin ganar mucha claridad a cambio.
-import { state, canvas, ZOOM_MIN, ZOOM_MAX, clamp, hasItem, assignHotbar, clearHotbarSlot, swapHotbarSlots, reorderInventory, moveInventoryToEnd } from './config.js';
+import { state, canvas, ZOOM_MIN, ZOOM_MAX, clamp, hasItem, assignHotbar, clearHotbarSlot, swapHotbarSlots, moveInventorySlot } from './config.js';
 import { SoundFX } from './audio.js';
 import { tryInteract, tryAttack, handleManualEat } from './player.js';
-import { tryCraftSpear, tryPlaceCampfire, tryCraftAxe, tryCraftPickaxe, tryCraftBackpack, tryPlaceShelter, tryEquipTool, useItem } from './crafting.js';
+import { tryCraftSpear, tryPlaceCampfire, tryCraftAxe, tryCraftPickaxe, tryCraftBackpack, tryPlaceShelter, tryEquipTool, useItem, tryRepairTool } from './crafting.js';
 import { toggleInventory, closeInventory, isInventoryOpen, toggleCraftMenu, closeCraftMenu, isCraftMenuOpen, openPause, closePause, updateEquipUI } from './ui.js';
 
 // ---------- Arrastre de la hotbar/inventario ----------
@@ -30,7 +30,7 @@ function slotInfoFromElement(el) {
   }
   const invSlot = el.closest && el.closest('.invSlot2');
   if (invSlot) {
-    return { container: 'inventory', el: invSlot, id: invSlot.dataset.itemId || null };
+    return { container: 'inventory', el: invSlot, id: invSlot.dataset.itemId || null, slotIndex: Number(invSlot.dataset.slotIndex) };
   }
   return null;
 }
@@ -67,13 +67,12 @@ function resolveDrop(target) {
         // hotbar (el ítem sigue existiendo, solo deja de estar asignado).
         clearHotbarSlot(dragState.slotIndex);
       } else if (dragState.origin === 'inventory') {
-        if (info.id && info.id !== dragState.id) {
-          // Soltar sobre otra casilla ocupada: swappea el orden de ambos tipos.
-          reorderInventory(dragState.id, info.id);
-        } else if (!info.id) {
-          // Soltar sobre una casilla vacía: lo manda al final del orden.
-          moveInventoryToEnd(dragState.id);
-        }
+        // Soltar sobre cualquier casilla del inventario (vacía u ocupada
+        // por otro ítem) mueve el ítem EXACTAMENTE a esa posición: si
+        // estaba vacía, el origen queda vacío; si tenía otro ítem, ambos
+        // intercambian lugar. Así se puede reorganizar libremente,
+        // dejando huecos donde el jugador quiera.
+        moveInventorySlot(dragState.slotIndex, info.slotIndex);
       }
     }
     updateEquipUI();
@@ -209,6 +208,15 @@ export function bindControls() {
   };
   document.getElementById('craftGrid').addEventListener('click', e => {
     if (!state.running || state.gameOver || state.paused) return;
+    // El botón de reparar es un elemento propio adentro de la casilla: si
+    // el click cayó ahí, repara y no sigue (no queremos que además
+    // equipe/guarde la herramienta con el mismo click).
+    const repairBtn = e.target.closest('.repairBtn');
+    if (repairBtn) {
+      const slot = repairBtn.closest('.craftSlot[data-action]');
+      if (slot) tryRepairTool(slot.dataset.action);
+      return;
+    }
     const slot = e.target.closest('.craftSlot[data-action]');
     if (!slot) return;
     const action = CRAFT_ACTIONS[slot.dataset.action];

@@ -1,4 +1,4 @@
-import { state, clamp, DAY_LENGTH, invTotal, capFor, ITEMS, hasItem, countItem, HOTBAR_SIZE, pruneHotbar, getInventoryOrder } from './config.js';
+import { state, clamp, DAY_LENGTH, invTotal, capFor, ITEMS, hasItem, countItem, HOTBAR_SIZE, pruneHotbar, syncInventorySlots, getDurability, maxDurability } from './config.js';
 import { SoundFX } from './audio.js';
 import { RECIPES } from './recipes.js';
 
@@ -14,12 +14,12 @@ let hintTimeout = null;
 // menú de crafteo completo. El click en una casilla siempre craftea (o
 // equipa/guarda si ya está craftada) — no depende de ninguna tecla.
 const CRAFT_CONFIG = {
-  spear: { equipKey: 'spear', icon: '🔱' },
-  campfire: { icon: '🔥' },
-  axe: { equipKey: 'axe', icon: '🪓' },
-  pickaxe: { equipKey: 'pickaxe', icon: '⛏️' },
-  backpack: { icon: '🎒' },
-  shelter: { icon: '⛺' }
+  spear: { equipKey: 'spear', icon: '🔱', image: 'assets/images/items/spear.png' },
+  campfire: { icon: '🔥', image: 'assets/images/items/campfire.png' },
+  axe: { equipKey: 'axe', icon: '🪓', image: 'assets/images/items/axe.png' },
+  pickaxe: { equipKey: 'pickaxe', icon: '⛏️', image: 'assets/images/items/pickaxe.png' },
+  backpack: { icon: '🎒', image: 'assets/images/items/backpack.png' },
+  shelter: { icon: '⛺', image: 'assets/images/items/shelter.png' }
 };
 
 // Una acción "se posee" si su propio id es un item craftable que el
@@ -41,8 +41,35 @@ function craftSlotStatus(action) {
   const cfg = CRAFT_CONFIG[action];
   const owned = isOwnableAction(action) && hasItem(action);
   const affordable = affordableFor(action);
-  const equipped = !!(cfg.equipKey && state.player.equippedTool === cfg.equipKey);
-  return { cfg, owned, affordable, equipped };
+  const equipped = !!(cfg.equipKey && state.player.equippedTool === action);
+  const durability = owned ? getDurability(action) : null;
+  return { cfg, owned, affordable, equipped, durability };
+}
+
+// Arma el HTML de un ícono de ítem/receta a partir de su `{ icon, image, label }`.
+// Se usa en hotbar, inventario y menú de crafteo en vez de imprimir el emoji
+// directo, así que agregar el `image` de un ítem nuevo alcanza para que
+// aparezca con arte real en los tres lugares a la vez. Si todavía no tiene
+// `image` (ítem sin arte propio), cae al emoji de `icon` como antes.
+function itemIconHtml(info, className) {
+  if (info.image) {
+    return `<img class="${className}" src="${info.image}" alt="${info.label || ''}" draggable="false">`;
+  }
+  return `<span class="${className} emojiIcon">${info.icon}</span>`;
+}
+
+// Barrita fina de durabilidad para lanza/hacha/pico (las únicas con
+// `durability` en ITEMS, ver config.js). Devuelve '' para cualquier otro
+// ítem (recursos, comida, mochila), así que se puede llamar siempre sin
+// chequear antes. El color baja de verde a amarillo a rojo a medida que se
+// gasta, igual criterio que las barras de vida/hambre del HUD.
+function durabilityBarHtml(id) {
+  const max = maxDurability(id);
+  if (!max) return '';
+  const current = getDurability(id);
+  const pct = clamp((current / max) * 100, 0, 100);
+  const level = pct > 50 ? 'high' : pct > 20 ? 'mid' : 'low';
+  return `<div class="durabilityBar"><div class="durabilityFill ${level}" style="width:${pct}%"></div></div>`;
 }
 
 export function pushLog(msg) {
@@ -104,7 +131,14 @@ let lastHotbarSignature = null;
 
 function renderHotbar() {
   pruneHotbar();
-  const signature = JSON.stringify(state.player.hotbar) + '|' + state.player.equippedTool;
+  // La firma tiene que incluir la CANTIDAD de cada ítem asignado, no solo
+  // qué id está en cada casilla: si ya tenías madera asignada y recolectás
+  // más, el array de ids no cambia, así que sin esto el cartelito de
+  // cantidad se quedaba pegado en el número viejo hasta que algo más
+  // (equipar, asignar otra casilla) forzara un re-render.
+  const counts = state.player.hotbar.map(id => (id ? countItem(id) : 0)).join(',');
+  const durabilities = state.player.hotbar.map(id => (id ? getDurability(id) : '')).join(',');
+  const signature = JSON.stringify(state.player.hotbar) + '|' + state.player.equippedTool + '|' + counts + '|' + durabilities;
   if (signature === lastHotbarSignature) return;
   lastHotbarSignature = signature;
 
@@ -129,10 +163,16 @@ function renderHotbar() {
     el.dataset.itemId = id;
     el.title = info.label;
     const statusText = info.category === 'tool' ? (equipped ? 'En mano' : 'Guardado') : '';
-    el.innerHTML = `<span class="hotIcon">${info.icon}</span>` +
+    // La hotbar es UNA sola casilla por tipo (no reparte en varios stacks
+    // como el panel de inventario), así que el número que muestra respeta
+    // el mismo tope de stack que en cualquier otro lado: nunca más de
+    // `info.stack` aunque el jugador tenga más cantidad guardada.
+    const shownCount = Math.min(countItem(id), info.stack);
+    el.innerHTML = itemIconHtml(info, 'hotIcon') +
       `<span class="hotKey">${i + 1}</span>` +
+      durabilityBarHtml(id) +
       (statusText ? `<span class="hotCost">${statusText}</span>` : '') +
-      (stackable ? `<span class="stackCount">${countItem(id)}</span>` : '');
+      (stackable ? `<span class="stackCount">${shownCount}</span>` : '');
     bar.appendChild(el);
   }
 }
@@ -167,7 +207,7 @@ function renderCraftGrid() {
   const grid = document.getElementById('craftGrid');
   grid.innerHTML = '';
   for (const action of Object.keys(CRAFT_CONFIG)) {
-    const { cfg, owned, affordable, equipped } = craftSlotStatus(action);
+    const { cfg, owned, affordable, equipped, durability } = craftSlotStatus(action);
     const el = document.createElement('div');
     el.className = 'craftSlot';
     el.dataset.action = action;
@@ -177,11 +217,21 @@ function renderCraftGrid() {
     el.classList.toggle('active', equipped);
     const costParts = Object.entries(RECIPES[action].cost)
       .filter(([, qty]) => qty)
-      .map(([id, qty]) => `${qty}${ITEMS[id] ? ITEMS[id].icon : ''}`);
+      .map(([id, qty]) => `${qty}${ITEMS[id] ? itemIconHtml(ITEMS[id], 'costIcon') : ''}`);
     const statusLabel = owned ? (cfg.equipKey ? (equipped ? 'En mano' : 'Guardado') : 'Equipado') : costParts.join(' ');
-    el.innerHTML = `<span class="craftIcon">${cfg.icon}</span>` +
+    const max = maxDurability(action);
+    // Botón de reparar: solo aparece si el ítem tiene durability, ya está
+    // craftéado, y no está al tope. Es un elemento con su propia clase
+    // (repairBtn) para que input.js lo distinga del resto de la casilla y
+    // no dispare también el equipar/guardar (ver el listener delegado).
+    const repairBtnHtml = owned && max && durability < max
+      ? '<div class="repairBtn" title="Reparar">🔧</div>'
+      : '';
+    el.innerHTML = itemIconHtml(cfg, 'craftIcon') +
       `<span class="craftName">${RECIPES[action].label}</span>` +
-      `<span class="craftCost">${statusLabel}</span>`;
+      (owned && max ? durabilityBarHtml(action) : '') +
+      `<span class="craftCost">${statusLabel}${owned && max ? ` (${durability}/${max})` : ''}</span>` +
+      repairBtnHtml;
     grid.appendChild(el);
   }
 }
@@ -230,27 +280,18 @@ function invSlotCount() {
 }
 
 function buildInventorySlots() {
-  const slots = [];
   const slotCount = invSlotCount();
-  // getInventoryOrder() (config.js) es la fuente de verdad de en qué orden
-  // se muestra cada TIPO de ítem; reorderInventory() la modifica al
-  // arrastrar una casilla sobre otra (ver drop delegado en input.js).
-  for (const id of getInventoryOrder()) {
-    const info = ITEMS[id];
-    const qty = countItem(id);
-    if (!info || qty <= 0) continue;
-    if (info.category === 'tool') {
-      slots.push({ type: id, count: 1 });
-      continue;
-    }
-    let remaining = qty;
-    while (remaining > 0) {
-      slots.push({ type: id, count: Math.min(info.stack, remaining) });
-      remaining -= info.stack;
-    }
+  // Sincroniza invSlots con lo que el jugador realmente tiene ANTES de
+  // leerlo: agrega/saca casillas de stack según subió o bajó la cantidad,
+  // sin tocar las posiciones que siguen siendo válidas (ver config.js).
+  syncInventorySlots(slotCount);
+  const invSlots = state.player.invSlots;
+  const slots = [];
+  for (let i = 0; i < slotCount; i++) {
+    const entry = invSlots[i];
+    slots.push(entry ? { type: entry.id, count: entry.qty } : null);
   }
-  while (slots.length < slotCount) slots.push(null);
-  return slots.slice(0, slotCount);
+  return slots;
 }
 
 // Se evita reconstruir la grilla si nada cambió desde el último render: además
@@ -261,20 +302,22 @@ let lastInvSignature = null;
 function renderInventoryGrid() {
   const slots = buildInventorySlots();
   const expanded = hasItem('backpack');
-  const signature = JSON.stringify(slots) + '|' + state.player.equippedTool + '|' + expanded;
+  const durabilities = slots.map(s => (s ? getDurability(s.type) : '')).join(',');
+  const signature = JSON.stringify(slots) + '|' + state.player.equippedTool + '|' + expanded + '|' + durabilities;
   if (signature === lastInvSignature) return;
   lastInvSignature = signature;
 
   const grid = document.getElementById('invGrid2');
   grid.classList.toggle('expanded', expanded);
   grid.innerHTML = '';
-  for (const item of slots) {
+  slots.forEach((item, i) => {
     const el = document.createElement('div');
     el.className = 'invSlot2';
+    el.dataset.slotIndex = i;
     if (!item) {
       el.classList.add('empty');
       grid.appendChild(el);
-      continue;
+      return;
     }
     const info = ITEMS[item.type];
     const stackable = info.category !== 'tool';
@@ -285,13 +328,15 @@ function renderInventoryGrid() {
     }
     el.title = info.label;
     el.dataset.itemId = item.type;
-    el.innerHTML = `<span class="invIcon2">${info.icon}</span>` + (stackable ? `<span class="stackCount">${item.count}</span>` : '');
+    el.innerHTML = itemIconHtml(info, 'invIcon2') + durabilityBarHtml(item.type) +
+      (stackable ? `<span class="stackCount">${item.count}</span>` : '');
     grid.appendChild(el);
-  }
+  });
 }
 
 export function updateInventoryPanel() {
-  document.getElementById('invPanelCap').textContent = `${invTotal()}/${capFor()}`;
+  const cap = capFor();
+  document.getElementById('invPanelCap').textContent = `${invTotal()}/${cap === Infinity ? '∞' : cap}`;
   renderInventoryGrid();
 }
 
