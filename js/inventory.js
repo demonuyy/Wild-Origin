@@ -1,4 +1,4 @@
-import { state, capFor, invTotal, clamp, hasItem, addItem, removeItem, ITEMS, damageTool } from './config.js';
+import { state, capFor, invTotal, clamp, hasItem, addItem, removeItem, ITEMS, damageTool, ACTION_SWING_DURATION } from './config.js';
 import { SoundFX } from './audio.js';
 import { pushLog, showHint } from './ui.js';
 import { removeEntity } from './world.js';
@@ -26,6 +26,7 @@ export function collectTreeResource(t) {
   gained = Math.min(gained, capFor() - invTotal());
   addItem('wood', gained);
   t.hits -= 2;
+  state.player.actionAnim = ACTION_SWING_DURATION;
   SoundFX.chop();
   pushLog(`Talaste madera (+${gained})`);
   // El hacha se gasta con cada golpe, se haya talado el árbol entero o no.
@@ -60,6 +61,7 @@ export function collectRockResource(r) {
   gained = Math.min(gained, capFor() - invTotal());
   addItem('stone', gained);
   r.hits -= 2;
+  state.player.actionAnim = ACTION_SWING_DURATION;
   SoundFX.mine();
   pushLog(`Picaste piedra (+${gained})`);
   // El pico se gasta con cada golpe, se haya roto la roca entera o no.
@@ -81,6 +83,7 @@ export function collectStick(s) {
     return;
   }
   addItem('wood', 1);
+  state.player.actionAnim = ACTION_SWING_DURATION;
   SoundFX.pickup('rustle');
   pushLog('Recogiste un palo (+1)');
   removeEntity('sticks', s);
@@ -93,6 +96,7 @@ export function collectStone(s) {
     return;
   }
   addItem('stone', 1);
+  state.player.actionAnim = ACTION_SWING_DURATION;
   SoundFX.pickup('rock');
   pushLog('Recogiste una piedra (+1)');
   removeEntity('stones', s);
@@ -111,9 +115,57 @@ export function collectBushResource(b) {
   const gained = 1;
   addItem('berries', gained);
   b.stock--;
+  state.player.actionAnim = ACTION_SWING_DURATION;
   SoundFX.berry();
   pushLog(`Recogiste bayas (+${gained})`);
   if (b.stock <= 0) b.regrowTimer = 26;
+}
+
+// Cadáver de un lobo/ciervo muerto (ver spawnCorpse en world.js). Tiene dos
+// etapas, cada una con su propio golpe de E:
+//  1. 'fresh': primer desuelle, da carne + piel; el cadáver NO desaparece,
+//     pasa a la etapa 'bones' (queda tirado, ahora como pura osamenta).
+//  2. 'bones': junta los huesos y ahí sí se saca del mundo del todo.
+// A diferencia de talar/minar, no requiere ninguna herramienta equipada: se
+// puede desollar y juntar los huesos a mano.
+const CORPSE_YIELD = {
+  wolf: { meat: [2, 3], hide: [1, 2], bone: [1, 2] },
+  deer: { meat: [3, 5], hide: [1, 2], bone: [2, 3] }
+};
+
+function rollYield([min, max]) {
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+export function harvestCorpse(c) {
+  const yields = CORPSE_YIELD[c.kind] || CORPSE_YIELD.wolf;
+  if (c.stage === 'fresh') {
+    if (invTotal() >= capFor()) {
+      SoundFX.craftFail();
+      showHint('Inventario lleno');
+      return;
+    }
+    const meat = Math.min(rollYield(yields.meat), capFor() - invTotal());
+    addItem('raw_meat', meat);
+    const hide = Math.min(rollYield(yields.hide), capFor() - invTotal());
+    if (hide > 0) addItem('hide', hide);
+    c.stage = 'bones';
+    state.player.actionAnim = ACTION_SWING_DURATION;
+    SoundFX.pickup('rustle');
+    pushLog(`Desollaste ${c.kind === 'wolf' ? 'el lobo' : 'el ciervo'} (+${meat} carne, +${hide} piel)`);
+  } else {
+    if (invTotal() >= capFor()) {
+      SoundFX.craftFail();
+      showHint('Inventario lleno');
+      return;
+    }
+    const bone = Math.min(rollYield(yields.bone), capFor() - invTotal());
+    addItem('bone', bone);
+    state.player.actionAnim = ACTION_SWING_DURATION;
+    SoundFX.pickup('rock');
+    pushLog(`Juntaste huesos (+${bone})`);
+    removeEntity('corpses', c);
+  }
 }
 
 // Come 1 unidad de cualquier ítem categoría 'food' (antes esto era solo

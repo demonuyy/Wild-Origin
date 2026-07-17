@@ -124,7 +124,8 @@ export function saveGame(slot = DEFAULT_SLOT) {
       deer: state.deer,
       grassDecor: state.grassDecor,
       sticks: state.sticks,
-      stones: state.stones
+      stones: state.stones,
+      corpses: state.corpses
     }
   };
   const key = keyFor(slot);
@@ -177,6 +178,9 @@ function applySaveData(data) {
   state.grassDecor = data.world?.grassDecor || [];
   state.sticks = data.world?.sticks || [];
   state.stones = data.world?.stones || [];
+  // Ausente en partidas guardadas antes de este sistema: [] por defecto,
+  // igual que el resto de las listas de arriba.
+  state.corpses = data.world?.corpses || [];
 }
 
 export function loadGame(slot = DEFAULT_SLOT) {

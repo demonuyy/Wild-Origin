@@ -94,6 +94,7 @@ export function generateWorld() {
   state.rippleDecals = [];
   state.sticks = [];
   state.stones = [];
+  state.corpses = [];
   state.chunkStore = {};
   state.loadedChunks = new Set();
   state.worldSeed = Math.floor(Math.random() * 1e9);
@@ -400,6 +401,118 @@ export function drawBloodDecals(ctx, cam, viewW, viewH) {
     ctx.fill();
     ctx.restore();
   }
+}
+
+// ---------- Cadáveres ----------
+// A diferencia de las manchas de sangre/ondas de arriba, un cadáver NO es
+// decorativo ni se desvanece solo: queda tirado hasta que el jugador lo
+// desuella (ver harvestCorpse en inventory.js) y junta los huesos. Tampoco
+// está atado a un chunk (no hace falta streaming para algo tan acotado), así
+// que sobrevive sin problema a que esa zona se descargue y se vuelva a
+// cargar. `spawnCorpse` es lo único que lo crea, llamado desde tryAttack en
+// player.js (lobo) y hitDeer en animals.js (ciervo) en el momento en que la
+// vida del animal llega a 0, en vez de borrarlo del todo con removeEntity.
+const MAX_CORPSES = 24;
+
+// kind: 'wolf' | 'deer'. `variant` es la misma paleta de color que ya tenía
+// el animal vivo (ver WOLF_VARIANTS/DEER_VARIANTS): así el cadáver se ve
+// como "ese" lobo/ciervo puntual y no un genérico gris para todos.
+export function spawnCorpse(x, y, kind, variant) {
+  state.corpses.push({ x, y, kind, variant: variant || 0, stage: 'fresh' });
+  // Cap simple, mismo criterio que blood/rippleDecals: si se pasa el
+  // límite, se descarta el más viejo primero. En la práctica casi no debería
+  // dispararse (24 cadáveres sin desollar a la vez es mucha cacería
+  // acumulada), pero evita que una partida rarísima crezca sin techo.
+  if (state.corpses.length > MAX_CORPSES) {
+    state.corpses.splice(0, state.corpses.length - MAX_CORPSES);
+  }
+}
+
+// Mismo criterio de color que devuelven WOLF_PALETTES/DEER_PALETTES, pero
+// apagado (más gris, menos saturado) para que se lea como un cuerpo sin
+// vida y no como el animal parado. No se importa directamente de
+// animals.js/enemies.js para no crear un import circular (esos dos módulos
+// ya importan DE world.js); en cambio esta es una paleta chica, propia,
+// pensada solo para el cadáver.
+const CORPSE_PALETTES = {
+  wolf: [
+    { fur: '#5c5b52', belly: '#7a786c' },
+    { fur: '#3c332a', belly: '#544940' },
+    { fur: '#948e7c', belly: '#b0aa96' }
+  ],
+  deer: [
+    { fur: '#8a6d4c', belly: '#a68a63' },
+    { fur: '#6e5236', belly: '#8a6c48' },
+    { fur: '#a3855c', belly: '#c0a378' }
+  ]
+};
+
+export function drawCorpse(c, cam, ctx) {
+  const sx = c.x - cam.x;
+  const sy = c.y - cam.y;
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(sx, sy + 4, 16, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (c.stage === 'bones') {
+    // Segunda etapa: ya se sacó carne y piel, solo queda un montoncito de
+    // huesos cruzados a la espera de que los junten.
+    ctx.strokeStyle = '#e8e2d0';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    [[-8, -3, 7, 3], [-7, 4, 8, -4], [-2, -6, 3, 6]].forEach(([x1, y1, x2, y2]) => {
+      ctx.beginPath();
+      ctx.moveTo(sx + x1, sy + y1);
+      ctx.lineTo(sx + x2, sy + y2);
+      ctx.stroke();
+    });
+    ctx.fillStyle = '#d8d0ba';
+    [[-8, -3], [7, 3], [-7, 4], [8, -4], [-2, -6], [3, 6]].forEach(([x, y]) => {
+      ctx.beginPath();
+      ctx.ellipse(sx + x, sy + y, 2, 1.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    return;
+  }
+
+  // Primera etapa: el animal entero, tirado de costado (silueta echada, no
+  // parada) — un óvalo de cuerpo apoyado + cabeza caída al ras del piso, en
+  // vez de reusar la pose de pie de drawWolf/drawDeer.
+  const pal = (CORPSE_PALETTES[c.kind] || CORPSE_PALETTES.wolf)[c.variant] || CORPSE_PALETTES.wolf[0];
+  const big = c.kind === 'deer';
+  const bodyRx = big ? 15 : 12, bodyRy = big ? 8 : 7;
+  ctx.fillStyle = pal.fur;
+  ctx.beginPath();
+  ctx.ellipse(sx, sy, bodyRx, bodyRy, 0.15, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = pal.belly;
+  ctx.beginPath();
+  ctx.ellipse(sx - 1, sy + bodyRy * 0.35, bodyRx * 0.7, bodyRy * 0.45, 0.15, 0, Math.PI * 2);
+  ctx.fill();
+  // Cabeza apoyada, caída hacia un costado.
+  ctx.fillStyle = pal.fur;
+  ctx.beginPath();
+  ctx.ellipse(sx + bodyRx * 0.85, sy + 2, big ? 6 : 5, big ? 4 : 3.5, 0.5, 0, Math.PI * 2);
+  ctx.fill();
+  // Ojo cerrado: una rayita, no un puntito, para que se note que no está
+  // parado/alerta.
+  ctx.strokeStyle = 'rgba(20,15,10,0.7)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(sx + bodyRx * 0.85 - 2, sy + 1);
+  ctx.lineTo(sx + bodyRx * 0.85 + 2, sy + 2);
+  ctx.stroke();
+  // Patas caídas, sin flexión (a diferencia de las patas del animal vivo).
+  ctx.strokeStyle = pal.belly;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  [-1, 1].forEach(side => {
+    ctx.beginPath();
+    ctx.moveTo(sx - bodyRx * 0.3, sy + bodyRy * 0.5 * side);
+    ctx.lineTo(sx - bodyRx * 0.9, sy + (bodyRy * 0.5 + 4) * side);
+    ctx.stroke();
+  });
 }
 
 // Devuelve true si (x,y) cae dentro del óvalo de una laguna (no del halo de

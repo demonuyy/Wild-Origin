@@ -1,11 +1,15 @@
-import { state, clamp, dist, DAY_LENGTH, invTotal, capFor, isNightPhase, hasItem, HOTBAR_SIZE, damageTool } from './config.js';
+import { state, clamp, dist, DAY_LENGTH, invTotal, capFor, isNightPhase, hasItem, HOTBAR_SIZE, damageTool, ACTION_SWING_DURATION } from './config.js';
 import { pushLog, showHint, updateEquipUI, updateHUD, showInteractPrompt, hideInteractPrompt, isInventoryOpen } from './ui.js';
 import { SoundFX } from './audio.js';
-import { collectTreeResource, collectRockResource, collectBushResource, consumeBerry, collectStick, collectStone } from './inventory.js';
-import { removeEntity, spawnBlood, spawnRipple, isInWater } from './world.js';
+import { collectTreeResource, collectRockResource, collectBushResource, consumeBerry, collectStick, collectStone, harvestCorpse } from './inventory.js';
+import { removeEntity, spawnBlood, spawnRipple, isInWater, spawnCorpse } from './world.js';
 import { hitDeer } from './animals.js';
 
 let footstepTimer = 0;
+// Cadencia del sonido de dolor mientras se está muriendo de hambre/sed (ver
+// updatePlayer): sin este timer, SoundFX.playerHurt() sonaría todos los
+// frames (varias veces por segundo) en vez de un "ay" cada tanto.
+let starveHurtTimer = 0;
 
 // Bonos de la lanza: antes se aplicaban de forma PERMANENTE apenas se
 // crafteaba (mutando attackDamage/attackRange para siempre, sin poder
@@ -44,6 +48,7 @@ export function resetPlayer() {
   state.player.attackRange = 34;
   state.player.attackCooldown = 0;
   state.player.hitFlash = 0;
+  state.player.actionAnim = 0;
   state.discoveredActions = new Set();
   updateEquipUI();
   updateHUD();
@@ -59,6 +64,16 @@ const INTERACT_LABELS = {
   shelter: 'Dormir',
   pond: 'Beber'
 };
+
+// Caso aparte: el cadáver tiene dos etapas (ver harvestCorpse en
+// inventory.js) y cada una necesita su propio verbo, así que no alcanza con
+// una entrada fija en INTERACT_LABELS como el resto de los tipos.
+function interactLabel(best) {
+  if (best.type === 'corpse') {
+    return best.obj.stage === 'fresh' ? 'Desollar' : 'Juntar huesos';
+  }
+  return INTERACT_LABELS[best.type];
+}
 
 // Busca el objeto interactuable más cercano al jugador (árbol, roca, arbusto,
 // palo, piedra suelta, refugio o laguna). La usan tanto tryInteract() (al
@@ -102,6 +117,13 @@ function findNearestInteractable() {
       best = { type: 'stone', obj: s };
     }
   }
+  for (const c of state.corpses) {
+    const d = dist(state.player.x, state.player.y, c.x, c.y);
+    if (d < bestD) {
+      bestD = d;
+      best = { type: 'corpse', obj: c };
+    }
+  }
   for (const s of state.shelters) {
     const d = dist(state.player.x, state.player.y, s.x, s.y);
     if (d < bestD) {
@@ -133,7 +155,7 @@ export function updateInteractionPrompt() {
   }
   const best = findNearestInteractable();
   if (best && !state.discoveredActions.has(best.type)) {
-    showInteractPrompt(`${INTERACT_LABELS[best.type]} <span class="promptKey">E</span>`);
+    showInteractPrompt(`${interactLabel(best)} <span class="promptKey">E</span>`);
   } else {
     hideInteractPrompt();
   }
@@ -159,6 +181,8 @@ export function tryInteract() {
     collectStick(best.obj);
   } else if (best.type === 'stone') {
     collectStone(best.obj);
+  } else if (best.type === 'corpse') {
+    harvestCorpse(best.obj);
   } else if (best.type === 'pond') {
     state.player.thirst = 100;
     SoundFX.drink();
@@ -190,6 +214,7 @@ export function tryAttack() {
   if (state.player.attackCooldown > 0) return;
   const wielding = state.player.equippedTool === 'spear';
   state.player.attackCooldown = wielding ? SPEAR_ATTACK_COOLDOWN : UNARMED_ATTACK_COOLDOWN;
+  state.player.actionAnim = ACTION_SWING_DURATION;
   SoundFX.attackSwing();
   const range = wielding ? SPEAR_RANGE : state.player.attackRange;
   const damage = wielding ? SPEAR_DAMAGE : state.player.attackDamage;
@@ -204,6 +229,7 @@ export function tryAttack() {
       spawnBlood(w.x, w.y, 3);
       if (w.health <= 0) {
         removeEntity('wolves', w);
+        spawnCorpse(w.x, w.y, 'wolf', w.variant);
         SoundFX.wolfDeath(w.x, w.y);
         spawnBlood(w.x, w.y, 6);
         pushLog('El lobo cayó');
@@ -298,11 +324,23 @@ export function updatePlayer(dt) {
   player.thirst = clamp(player.thirst - THIRST_DECAY_RATE * decayMult * dt, 0, 100);
   if (player.hunger <= 0 || player.thirst <= 0) {
     player.health = clamp(player.health - 3.2 * dt, 0, 100);
-  } else if (player.health < 100 && player.hunger > 55 && player.thirst > 55 && !isNightPhase((state.elapsed % DAY_LENGTH) / DAY_LENGTH)) {
-    player.health = clamp(player.health + 1.4 * dt, 0, 100);
+    // Mismo sonido de dolor que usa el mordisco del lobo (enemies.js), acá
+    // repetido cada ~1.8s mientras el hambre o la sed sigan en 0, para que
+    // se note que la salud se está yendo por inanición y no solo por el HUD.
+    starveHurtTimer -= dt;
+    if (starveHurtTimer <= 0) {
+      SoundFX.playerHurt();
+      starveHurtTimer = 1.8;
+    }
+  } else {
+    starveHurtTimer = 0;
+    if (player.health < 100 && player.hunger > 55 && player.thirst > 55 && !isNightPhase((state.elapsed % DAY_LENGTH) / DAY_LENGTH)) {
+      player.health = clamp(player.health + 1.4 * dt, 0, 100);
+    }
   }
   if (player.attackCooldown > 0) player.attackCooldown -= dt;
   if (player.hitFlash > 0) player.hitFlash -= dt;
+  if (player.actionAnim > 0) player.actionAnim = Math.max(0, player.actionAnim - dt);
 }
 
 export function handleManualEat() {

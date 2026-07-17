@@ -1,6 +1,6 @@
 import { state, rand, dist } from './config.js';
 import { SoundFX } from './audio.js';
-import { removeEntity, spawnBlood, maybeSpawnWaterRipple } from './world.js';
+import { removeEntity, spawnBlood, maybeSpawnWaterRipple, spawnCorpse } from './world.js';
 import { pushLog } from './ui.js';
 
 // Radio dentro del cual el pánico de un ciervo asusta a los demás (manada).
@@ -37,6 +37,7 @@ export function hitDeer(d, damage) {
   spookDeer(d, state.player.x, state.player.y, false);
   if (d.health <= 0) {
     removeEntity('deer', d);
+    spawnCorpse(d.x, d.y, 'deer', d.variant);
     SoundFX.deerDeath(d.x, d.y);
     spawnBlood(d.x, d.y, 6);
     pushLog('El ciervo cayó');

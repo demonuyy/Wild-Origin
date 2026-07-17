@@ -17,6 +17,11 @@ export const ZOOM_DEFAULT = 1.6;
 
 // Cantidad de casillas de la hotbar real (ver player.hotbar más abajo).
 export const HOTBAR_SIZE = 6;
+// Duración (en segundos) de la animación de golpe/recolección: cuánto dura
+// el arco visible del brazo/herramienta cada vez que el jugador tala, mina,
+// ataca o junta algo a mano. Es solo visual, no frena ni gatea la acción en
+// sí (que sigue rigiéndose por su propio cooldown si tiene uno).
+export const ACTION_SWING_DURATION = 0.28;
 
 // Registro central de ítems. Antes cada material/herramienta vivía como un
 // campo suelto en state.player (player.wood, player.hasAxe, etc.) repetido
@@ -45,6 +50,15 @@ export const ITEMS = {
   // inventory.js). Ítems futuros de comida (v0.3+: carne cocida, etc.) solo
   // necesitan agregar su propio valor acá.
   berries: { label: 'Bayas', icon: '🍓', image: IMG_BASE + 'berries.png', stack: STACK_SIZE, category: 'food', hunger: 22 },
+  // Se consiguen desollando el cadáver de un lobo o un ciervo (ver
+  // harvestCorpse en inventory.js), no cosechando del mundo como el resto de
+  // los recursos.
+  raw_meat: { label: 'Carne cruda', icon: '🥩', image: IMG_BASE + 'raw_meat.png', stack: STACK_SIZE, category: 'food', hunger: 30 },
+  hide: { label: 'Piel', icon: '🟤', image: IMG_BASE + 'hide.png', stack: STACK_SIZE, category: 'resource' },
+  // Queda del cadáver recién DESPUÉS de sacarle carne y piel (segunda etapa
+  // de harvestCorpse); todavía no se usa en ninguna receta, pensado para
+  // crafteos futuros (herramientas de hueso, etc. del roadmap).
+  bone: { label: 'Hueso', icon: '🦴', image: IMG_BASE + 'bone.png', stack: STACK_SIZE, category: 'resource' },
   spear: { label: 'Lanza', icon: '🔱', image: IMG_BASE + 'spear.png', stack: 1, category: 'tool', durability: 25 },
   axe: { label: 'Hacha', icon: '🪓', image: IMG_BASE + 'axe.png', stack: 1, category: 'tool', durability: 40 },
   pickaxe: { label: 'Pico', icon: '⛏️', image: IMG_BASE + 'pickaxe.png', stack: 1, category: 'tool', durability: 40 },
@@ -95,6 +109,15 @@ export const state = {
   // isInWater/maybeSpawnWaterRipple en world.js). Mismo criterio que
   // bloodDecals: efímeras, se desvanecen solas y no se persisten al guardar.
   rippleDecals: [],
+  // Cadáveres de animales (lobo/ciervo) muertos por el jugador. A diferencia
+  // de bloodDecals/rippleDecals, ESTOS sí se guardan en el save (ver
+  // save.js): quedan tirados en el mundo hasta que el jugador los desuella
+  // (carne + piel) y después junta los huesos, momento en el que recién
+  // desaparecen (removeEntity). Tampoco están atados a chunks como
+  // trees/rocks/etc. (no hace falta streaming: son pocos y acotados por
+  // MAX_CORPSES, ver spawnCorpse en world.js), así que sobreviven al
+  // descargar/recargar la zona igual que blood/ripple, pero sin desvanecerse.
+  corpses: [],
   // Palos y piedras sueltos, recolectables a mano sin ninguna herramienta.
   // Son el único recurso disponible hasta craftear hacha/pico, ya que talar
   // árboles y minar rocas requiere tener esa herramienta en la mano.
@@ -147,6 +170,10 @@ export const state = {
     attackDamage: 12,
     attackCooldown: 0,
     hitFlash: 0,
+    // Cuenta regresiva (segundos) de la animación de golpe/recolección en
+    // curso; ver ACTION_SWING_DURATION más arriba y drawPlayer() en
+    // render.js, que la usa para arquear el brazo/herramienta.
+    actionAnim: 0,
     radius: 14
   }
 };
@@ -345,7 +372,11 @@ export function syncInventorySlots(slotCount) {
   const slots = state.player.invSlots;
   while (slots.length < slotCount) slots.push(null);
 
-  const owned = state.player.inventory.filter(s => s.qty > 0);
+  // La mochila se posee y cuenta para todo (hasItem, el bonus de filas del
+  // panel, el dibujo en la espalda del jugador) pero nunca ocupa una casilla
+  // visible: es pasiva, no se equipa "en la mano" como hacha/lanza/pico, así
+  // que no tiene sentido que aparezca para arrastrar o clickear.
+  const owned = state.player.inventory.filter(s => s.qty > 0 && s.id !== 'backpack');
   const ownedIds = new Set(owned.map(s => s.id));
   for (let i = 0; i < slots.length; i++) {
     if (slots[i] && !ownedIds.has(slots[i].id)) slots[i] = null;

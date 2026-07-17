@@ -1,9 +1,9 @@
 // Todo lo que dibuja en pantalla (antes vivía adentro de game.js, mezclado
 // con el bucle principal y el binding de controles). game.js ahora solo
 // llama a render() una vez por frame.
-import { state, ctx, canvas, DAY_LENGTH, ZOOM_MIN, ZOOM_DEFAULT, clamp, hasItem } from './config.js';
+import { state, ctx, canvas, DAY_LENGTH, ZOOM_MIN, ZOOM_DEFAULT, clamp, hasItem, ACTION_SWING_DURATION } from './config.js';
 import { SoundFX } from './audio.js';
-import { drawGround, drawGrassDecor, drawBloodDecals, drawPonds, drawRippleDecals, drawTree, drawRock, drawBush, drawStick, drawStone } from './world.js';
+import { drawGround, drawGrassDecor, drawBloodDecals, drawPonds, drawRippleDecals, drawTree, drawRock, drawBush, drawStick, drawStone, drawCorpse } from './world.js';
 import { drawDeer } from './animals.js';
 import { drawWolf } from './enemies.js';
 import { drawCampfire, drawShelter } from './building.js';
@@ -63,6 +63,21 @@ function drawPlayer(cam) {
   const perpY = player.dir.x;
   const armSwing = moving ? Math.sin(state.elapsed * 10) * 4 : 0;
   const hasTool = player.equippedTool === 'spear' || player.equippedTool === 'axe' || player.equippedTool === 'pickaxe';
+
+  // Animación de golpe/recolección: mientras actionAnim > 0, la mano activa
+  // y la herramienta describen un arco corto (atrás -> al frente, pasando
+  // por la dirección real del jugador justo en el "impacto", a mitad de
+  // camino) en vez de quedarse clavadas apuntando siempre igual.
+  const swinging = player.actionAnim > 0;
+  const swingT = swinging ? 1 - clamp(player.actionAnim / ACTION_SWING_DURATION, 0, 1) : 0;
+  const SWING_RANGE = 1.15; // radianes totales que recorre el arco
+  const swingOffset = swinging ? (swingT - 0.5) * SWING_RANGE : 0;
+  const swingCos = Math.cos(swingOffset), swingSin = Math.sin(swingOffset);
+  // Dirección real del jugador rotada por swingOffset: se usa en vez de
+  // player.dir para todo lo que tiene que "verse" moviendo el golpe (mano
+  // activa, lanza, hacha/pico), sin tocar torso/piernas/cabeza.
+  const swingDirX = player.dir.x * swingCos - player.dir.y * swingSin;
+  const swingDirY = player.dir.x * swingSin + player.dir.y * swingCos;
   // Contorno oscuro fino aplicado a casi todas las piezas: es lo que hace
   // que el personaje se lea con claridad contra el pasto/fondo, en vez de
   // mezclarse con los colores del mundo como pasaba antes.
@@ -176,7 +191,13 @@ function drawPlayer(cam) {
   const activeShoulderX = sx + perpX * ARM_SPACING;
   const activeShoulderY = sy - 3 + perpY * ARM_SPACING;
   let activeHandX, activeHandY;
-  if (hasTool) {
+  if (swinging) {
+    // Durante el golpe, la mano se extiende más y sigue el arco en vez de
+    // apuntar siempre a player.dir.
+    const reach = hasTool ? 15 : 12;
+    activeHandX = sx + swingDirX * reach;
+    activeHandY = sy + swingDirY * reach - 2;
+  } else if (hasTool) {
     activeHandX = sx + player.dir.x * 14;
     activeHandY = sy + player.dir.y * 14 - 2;
   } else {
@@ -318,7 +339,7 @@ function drawPlayer(cam) {
   // atadura de cuero sujetando la punta, y una punta de piedra en forma de
   // hoja en vez de un círculo plano.
   if (player.equippedTool === 'spear') {
-    const dx = player.dir.x, dy = player.dir.y;
+    const dx = swinging ? swingDirX : player.dir.x, dy = swinging ? swingDirY : player.dir.y;
     const perpSpX = -dy, perpSpY = dx;
     const baseX = sx + dx * 4, baseY = sy + dy * 4;
     const tipX = sx + dx * 33, tipY = sy + dy * 33;
@@ -383,25 +404,26 @@ function drawPlayer(cam) {
   // Hacha o pico "en la mano": solo se dibuja si esa es la herramienta activa,
   // para que se note a simple vista que el jugador puede talar o minar ahora mismo.
   if (player.equippedTool === 'axe' || player.equippedTool === 'pickaxe') {
-    const hx = sx + player.dir.x * 16;
-    const hy = sy + player.dir.y * 16 - 4;
+    const tdx = swinging ? swingDirX : player.dir.x, tdy = swinging ? swingDirY : player.dir.y;
+    const hx = sx + tdx * 16;
+    const hy = sy + tdy * 16 - 4;
     ctx.strokeStyle = '#5a4530';
     ctx.lineWidth = 2.4;
     ctx.beginPath();
     ctx.moveTo(hx, hy + 10);
-    ctx.lineTo(hx + player.dir.x * 4, hy - 8);
+    ctx.lineTo(hx + tdx * 4, hy - 8);
     ctx.stroke();
     ctx.fillStyle = '#b7b6ac';
     ctx.beginPath();
     if (player.equippedTool === 'axe') {
-      ctx.moveTo(hx + player.dir.x * 4 - 5, hy - 8);
-      ctx.lineTo(hx + player.dir.x * 4 + 5, hy - 10);
-      ctx.lineTo(hx + player.dir.x * 4 + 3, hy - 2);
-      ctx.lineTo(hx + player.dir.x * 4 - 4, hy - 3);
+      ctx.moveTo(hx + tdx * 4 - 5, hy - 8);
+      ctx.lineTo(hx + tdx * 4 + 5, hy - 10);
+      ctx.lineTo(hx + tdx * 4 + 3, hy - 2);
+      ctx.lineTo(hx + tdx * 4 - 4, hy - 3);
     } else {
-      ctx.moveTo(hx + player.dir.x * 4 - 6, hy - 5);
-      ctx.lineTo(hx + player.dir.x * 4 + 6, hy - 11);
-      ctx.lineTo(hx + player.dir.x * 4 + 2, hy - 3);
+      ctx.moveTo(hx + tdx * 4 - 6, hy - 5);
+      ctx.lineTo(hx + tdx * 4 + 6, hy - 11);
+      ctx.lineTo(hx + tdx * 4 + 2, hy - 3);
     }
     ctx.closePath();
     ctx.fill();
@@ -481,6 +503,7 @@ export function render() {
   for (const b of state.bushes) if (inView(b)) drawables.push({ y: b.y, type: 2, ref: b });
   for (const s of state.sticks) if (inView(s)) drawables.push({ y: s.y, type: 8, ref: s });
   for (const s of state.stones) if (inView(s)) drawables.push({ y: s.y, type: 9, ref: s });
+  for (const c of state.corpses) if (inView(c)) drawables.push({ y: c.y, type: 10, ref: c });
   for (const f of state.campfires) if (inView(f)) drawables.push({ y: f.y, type: 3, ref: f });
   for (const s of state.shelters) if (inView(s)) drawables.push({ y: s.y, type: 4, ref: s });
   for (const d of state.deer) if (inView(d)) drawables.push({ y: d.y, type: 5, ref: d });
@@ -499,6 +522,7 @@ export function render() {
       case 7: drawPlayer(cam); break;
       case 8: drawStick(d.ref, cam, ctx); break;
       case 9: drawStone(d.ref, cam, ctx); break;
+      case 10: drawCorpse(d.ref, cam, ctx); break;
     }
   }
 
