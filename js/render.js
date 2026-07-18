@@ -3,8 +3,8 @@
 // llama a render() una vez por frame.
 import { state, ctx, canvas, DAY_LENGTH, ZOOM_MIN, ZOOM_DEFAULT, clamp, hasItem, ACTION_SWING_DURATION } from './config.js';
 import { SoundFX } from './audio.js';
-import { drawGround, drawGrassDecor, drawBloodDecals, drawPonds, drawRippleDecals, drawTree, drawRock, drawBush, drawStick, drawStone, drawCorpse } from './world.js';
-import { drawDeer } from './animals.js';
+import { drawGround, drawGrassDecor, drawBloodDecals, drawPonds, drawRippleDecals, drawTree, drawRock, drawBush, drawStick, drawStone, drawCorpse, drawGroundItem } from './world.js';
+import { drawDeer, drawRabbit } from './animals.js';
 import { drawWolf } from './enemies.js';
 import { drawCampfire, drawShelter } from './building.js';
 
@@ -62,7 +62,7 @@ function drawPlayer(cam) {
   const perpX = -player.dir.y;
   const perpY = player.dir.x;
   const armSwing = moving ? Math.sin(state.elapsed * 10) * 4 : 0;
-  const hasTool = player.equippedTool === 'spear' || player.equippedTool === 'axe' || player.equippedTool === 'pickaxe';
+  const hasTool = player.equippedTool === 'spear' || player.equippedTool === 'axe' || player.equippedTool === 'pickaxe' || player.equippedTool === 'torch';
 
   // Animación de golpe/recolección: mientras actionAnim > 0, la mano activa
   // y la herramienta describen un arco corto (atrás -> al frente, pasando
@@ -428,6 +428,28 @@ function drawPlayer(cam) {
     ctx.closePath();
     ctx.fill();
   }
+  // Antorcha "en la mano": palo + llama con un parpadeo simple (tamaño
+  // oscilando con el tiempo). No tiene animación de golpe -swing- como el
+  // resto (no se "usa" pegando), así que siempre usa player.dir directo.
+  if (player.equippedTool === 'torch') {
+    const tx = sx + player.dir.x * 14;
+    const ty = sy + player.dir.y * 14 - 6;
+    ctx.strokeStyle = '#5a4530';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(tx, ty + 10);
+    ctx.lineTo(tx, ty - 4);
+    ctx.stroke();
+    const flicker = 0.85 + Math.sin(state.elapsed * 14 + player.x * 0.2) * 0.15;
+    const flameG = ctx.createRadialGradient(tx, ty - 8, 0, tx, ty - 8, 7 * flicker);
+    flameG.addColorStop(0, 'rgba(255,240,180,0.95)');
+    flameG.addColorStop(0.5, 'rgba(255,150,40,0.85)');
+    flameG.addColorStop(1, 'rgba(255,90,20,0)');
+    ctx.fillStyle = flameG;
+    ctx.beginPath();
+    ctx.ellipse(tx, ty - 8, 4.5 * flicker, 6.5 * flicker, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 // ---------- Niebla al alejar la cámara ----------
@@ -508,6 +530,8 @@ export function render() {
   for (const s of state.shelters) if (inView(s)) drawables.push({ y: s.y, type: 4, ref: s });
   for (const d of state.deer) if (inView(d)) drawables.push({ y: d.y, type: 5, ref: d });
   for (const w of state.wolves) if (inView(w)) drawables.push({ y: w.y, type: 6, ref: w });
+  for (const r of state.rabbits) if (inView(r)) drawables.push({ y: r.y, type: 11, ref: r });
+  for (const g of state.groundItems) if (inView(g)) drawables.push({ y: g.y, type: 12, ref: g });
   drawables.push({ y: state.player.y, type: 7, ref: null });
   drawables.sort((a, b) => a.y - b.y);
   for (const d of drawables) {
@@ -523,6 +547,8 @@ export function render() {
       case 8: drawStick(d.ref, cam, ctx); break;
       case 9: drawStone(d.ref, cam, ctx); break;
       case 10: drawCorpse(d.ref, cam, ctx); break;
+      case 11: drawRabbit(d.ref, cam, ctx); break;
+      case 12: drawGroundItem(d.ref, cam, ctx); break;
     }
   }
 
@@ -552,9 +578,11 @@ export function render() {
     mctx.globalCompositeOperation = 'destination-out';
     // Posiciones y radios en espacio de pantalla real: hay que multiplicar por el zoom
     // porque el mundo se dibujó escalado, pero esta máscara no.
-    // El jugador NO emite luz propia (no tiene antorcha ni nada que ilumine):
-    // de noche, la única fuente de visibilidad es el fuego de las fogatas,
-    // de acá para abajo. Sin una cerca, queda a oscuras.
+    // El jugador NO emite luz propia por defecto, salvo que tenga la
+    // antorcha equipada (ver ITEMS.torch en config.js): ahí se le agrega un
+    // agujero de luz centrado en su posición, más chico que el de una
+    // fogata (es una llama que lleva en la mano, no una hoguera armada).
+    // Sin antorcha ni una fogata cerca, de noche queda a oscuras del todo.
     for (const f of state.campfires) {
       const fx = (f.x - cam.x) * zoom;
       const fy = (f.y - cam.y) * zoom;
@@ -566,6 +594,19 @@ export function render() {
       mctx.fillStyle = fg;
       mctx.beginPath();
       mctx.arc(fx, fy, fireR, 0, Math.PI * 2);
+      mctx.fill();
+    }
+    if (state.player.equippedTool === 'torch') {
+      const px = (state.player.x - cam.x) * zoom;
+      const py = (state.player.y - cam.y) * zoom;
+      const torchR = 150 * zoom;
+      let tg = mctx.createRadialGradient(px, py, 6 * zoom, px, py, torchR);
+      tg.addColorStop(0, 'rgba(0,0,0,1)');
+      tg.addColorStop(0.55, 'rgba(0,0,0,0.6)');
+      tg.addColorStop(1, 'rgba(0,0,0,0)');
+      mctx.fillStyle = tg;
+      mctx.beginPath();
+      mctx.arc(px, py, torchR, 0, Math.PI * 2);
       mctx.fill();
     }
     ctx.drawImage(mask, 0, 0);

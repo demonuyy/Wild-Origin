@@ -19,7 +19,8 @@ const CRAFT_CONFIG = {
   axe: { equipKey: 'axe', icon: '🪓', image: 'assets/images/items/axe.png' },
   pickaxe: { equipKey: 'pickaxe', icon: '⛏️', image: 'assets/images/items/pickaxe.png' },
   backpack: { icon: '🎒', image: 'assets/images/items/backpack.png' },
-  shelter: { icon: '⛺', image: 'assets/images/items/shelter.png' }
+  shelter: { icon: '⛺', image: 'assets/images/items/shelter.png' },
+  torch: { equipKey: 'torch', icon: '🔦', image: 'assets/images/items/torch.png' }
 };
 
 // Una acción "se posee" si su propio id es un item craftable que el
@@ -161,6 +162,11 @@ function renderHotbar() {
     el.classList.add('filled');
     el.classList.toggle('active', equipped);
     el.dataset.itemId = id;
+    // Cuánto tirar al soltar esta casilla fuera de cualquier slot válido (ver
+    // resolveDrop en input.js): en la hotbar siempre es TODO lo que se
+    // posee de ese id (acá no hay noción de stack parcial como en el panel
+    // de inventario).
+    el.dataset.qty = countItem(id);
     el.title = info.label;
     const statusText = info.category === 'tool' ? (equipped ? 'En mano' : 'Guardado') : '';
     // La hotbar es UNA sola casilla por tipo (no reparte en varios stacks
@@ -328,6 +334,9 @@ function renderInventoryGrid() {
     }
     el.title = info.label;
     el.dataset.itemId = item.type;
+    // A diferencia de la hotbar, acá es la cantidad de ESTE stack visual
+    // puntual (puede ser un stack partido a mano), no el total del ítem.
+    el.dataset.qty = item.count;
     el.innerHTML = itemIconHtml(info, 'invIcon2') + durabilityBarHtml(item.type) +
       (stackable ? `<span class="stackCount">${item.count}</span>` : '');
     grid.appendChild(el);

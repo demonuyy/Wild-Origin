@@ -10,6 +10,7 @@ import {
   tryCraftBackpack,
   tryPlaceCampfire,
   tryPlaceShelter,
+  tryCraftTorch,
   tryEquipTool
 } from '../js/crafting.js';
 import { tryAttack } from '../js/player.js';
@@ -142,4 +143,27 @@ test('tryPlaceShelter requiere 15 madera y 8 piedra', () => {
   assert.equal(state.shelters.length, 1);
   assert.equal(countItem('wood'), 0);
   assert.equal(countItem('stone'), 0);
+});
+
+test('tryCraftTorch cobra 3 madera y 1 piedra, y la deja equipada en la mano', () => {
+  resetState();
+  addItem('wood', 3);
+  addItem('stone', 1);
+  tryCraftTorch();
+  assert.equal(hasItem('torch'), true);
+  assert.equal(state.player.equippedTool, 'torch');
+  assert.equal(countItem('wood'), 0);
+  assert.equal(countItem('stone'), 0);
+});
+
+test('tryCraftTorch ya poseída equivale a alternar equipar/guardar (no vuelve a cobrar)', () => {
+  resetState();
+  addItem('torch', 1);
+  state.player.equippedTool = 'torch';
+  addItem('wood', 10);
+  tryCraftTorch(); // debería guardarla, no cobrar de nuevo
+  assert.equal(state.player.equippedTool, null);
+  assert.equal(countItem('wood'), 10);
+  tryCraftTorch(); // debería volver a ponerla en la mano
+  assert.equal(state.player.equippedTool, 'torch');
 });

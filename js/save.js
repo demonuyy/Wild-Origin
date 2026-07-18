@@ -122,10 +122,12 @@ export function saveGame(slot = DEFAULT_SLOT) {
       shelters: state.shelters,
       wolves: state.wolves,
       deer: state.deer,
+      rabbits: state.rabbits,
       grassDecor: state.grassDecor,
       sticks: state.sticks,
       stones: state.stones,
-      corpses: state.corpses
+      corpses: state.corpses,
+      groundItems: state.groundItems
     }
   };
   const key = keyFor(slot);
@@ -175,12 +177,18 @@ function applySaveData(data) {
   state.shelters = data.world?.shelters || [];
   state.wolves = data.world?.wolves || [];
   state.deer = data.world?.deer || [];
+  // Ausente en partidas guardadas antes de este sistema: [] por defecto,
+  // igual que corpses más abajo.
+  state.rabbits = data.world?.rabbits || [];
   state.grassDecor = data.world?.grassDecor || [];
   state.sticks = data.world?.sticks || [];
   state.stones = data.world?.stones || [];
   // Ausente en partidas guardadas antes de este sistema: [] por defecto,
   // igual que el resto de las listas de arriba.
   state.corpses = data.world?.corpses || [];
+  // Ausente en partidas guardadas antes de este sistema: [] por defecto,
+  // igual que corpses/rabbits.
+  state.groundItems = data.world?.groundItems || [];
 }
 
 export function loadGame(slot = DEFAULT_SLOT) {

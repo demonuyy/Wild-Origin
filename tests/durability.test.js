@@ -3,9 +3,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { state, addItem, countItem, hasItem, getDurability, maxDurability, damageTool, repairTool } from '../js/config.js';
 import { resetState } from './helpers/reset-state.js';
-import { tryCraftAxe, tryCraftPickaxe, tryCraftSpear, tryRepairTool } from '../js/crafting.js';
+import { tryCraftAxe, tryCraftPickaxe, tryCraftSpear, tryCraftTorch, tryRepairTool } from '../js/crafting.js';
 import { collectTreeResource } from '../js/inventory.js';
-import { tryAttack } from '../js/player.js';
+import { tryAttack, updatePlayer } from '../js/player.js';
 
 test('una herramienta recién crafteada arranca con la durabilidad al máximo', () => {
   resetState();
@@ -136,4 +136,37 @@ test('tryRepairTool no hace nada si la herramienta ya está al máximo', () => {
   tryRepairTool('axe'); // ya está al 100%
   assert.equal(countItem('wood'), 10, 'no debería haber cobrado nada');
   assert.equal(countItem('stone'), 10);
+});
+
+test('la antorcha equipada se gasta con el TIEMPO (segundos), no por golpe', () => {
+  resetState();
+  addItem('wood', 3);
+  addItem('stone', 1);
+  tryCraftTorch(); // queda equipada
+  const before = getDurability('torch');
+  updatePlayer(5); // 5 segundos de juego con la antorcha en la mano
+  assert.ok(getDurability('torch') < before, 'se gastó con el paso del tiempo');
+  assert.ok(before - getDurability('torch') - 5 < 0.001, 'se gastan ~5 de durabilidad en 5 segundos');
+});
+
+test('la antorcha guardada (no equipada) no se gasta', () => {
+  resetState();
+  addItem('wood', 3);
+  addItem('stone', 1);
+  tryCraftTorch();
+  state.player.equippedTool = null; // la guarda
+  const before = getDurability('torch');
+  updatePlayer(10);
+  assert.equal(getDurability('torch'), before);
+});
+
+test('la antorcha se apaga sola (se rompe y desequipa) al quedarse sin durabilidad', () => {
+  resetState();
+  addItem('wood', 3);
+  addItem('stone', 1);
+  tryCraftTorch();
+  const max = maxDurability('torch');
+  updatePlayer(max + 1); // más tiempo del que dura encendida
+  assert.equal(hasItem('torch'), false);
+  assert.equal(state.player.equippedTool, null);
 });

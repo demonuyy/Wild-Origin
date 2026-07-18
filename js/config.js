@@ -39,10 +39,11 @@ export const ACTION_SWING_DURATION = 0.28;
 // `icon` se conserva como fallback/alt por si a algún ítem futuro todavía no
 // se le sumó el arte.
 const IMG_BASE = 'assets/images/items/';
-// `durability`: usos antes de romperse (ver damageTool en este archivo).
-// Solo la tienen las herramientas que se USAN activamente (golpear con la
-// lanza, talar con el hacha, minar con el pico); la mochila es pasiva y no
-// se gasta, así que no tiene este campo.
+// `durability`: cuánto aguanta antes de romperse (ver damageTool en este
+// archivo). La lanza/hacha/pico la gastan por USO (un golpe que conecta);
+// la antorcha la gasta por TIEMPO equipada (ver updatePlayer en player.js).
+// La mochila es puramente pasiva y no se gasta con nada, así que no tiene
+// este campo.
 export const ITEMS = {
   wood: { label: 'Madera', icon: '🌲', image: IMG_BASE + 'wood.png', stack: STACK_SIZE, category: 'resource' },
   stone: { label: 'Piedra', icon: '🪨', image: IMG_BASE + 'stone.png', stack: STACK_SIZE, category: 'resource' },
@@ -53,7 +54,13 @@ export const ITEMS = {
   // Se consiguen desollando el cadáver de un lobo o un ciervo (ver
   // harvestCorpse en inventory.js), no cosechando del mundo como el resto de
   // los recursos.
-  raw_meat: { label: 'Carne cruda', icon: '🥩', image: IMG_BASE + 'raw_meat.png', stack: STACK_SIZE, category: 'food', hunger: 30 },
+  // `thirstPenalty`/`healthPenalty`: comerla cruda sacia bastante el hambre
+  // pero te hace mal (sube el riesgo de enfermarte comiendo algo crudo) —
+  // baja mucho la sed y un poco la vida (ver consumeFood en inventory.js).
+  // Cocinarla en una fogata (tryCookMeat) la convierte en `cooked_meat`,
+  // que no tiene esta penalización y restaura más hambre.
+  raw_meat: { label: 'Carne cruda', icon: '🥩', image: IMG_BASE + 'raw_meat.png', stack: STACK_SIZE, category: 'food', hunger: 30, thirstPenalty: 28, healthPenalty: 8 },
+  cooked_meat: { label: 'Carne cocida', icon: '🍖', image: IMG_BASE + 'cooked_meat.png', stack: STACK_SIZE, category: 'food', hunger: 40 },
   hide: { label: 'Piel', icon: '🟤', image: IMG_BASE + 'hide.png', stack: STACK_SIZE, category: 'resource' },
   // Queda del cadáver recién DESPUÉS de sacarle carne y piel (segunda etapa
   // de harvestCorpse); todavía no se usa en ninguna receta, pensado para
@@ -62,7 +69,14 @@ export const ITEMS = {
   spear: { label: 'Lanza', icon: '🔱', image: IMG_BASE + 'spear.png', stack: 1, category: 'tool', durability: 25 },
   axe: { label: 'Hacha', icon: '🪓', image: IMG_BASE + 'axe.png', stack: 1, category: 'tool', durability: 40 },
   pickaxe: { label: 'Pico', icon: '⛏️', image: IMG_BASE + 'pickaxe.png', stack: 1, category: 'tool', durability: 40 },
-  backpack: { label: 'Mochila', icon: '🎒', image: IMG_BASE + 'backpack.png', stack: 1, category: 'tool' }
+  backpack: { label: 'Mochila', icon: '🎒', image: IMG_BASE + 'backpack.png', stack: 1, category: 'tool' },
+  // `durability` acá representa segundos de llama antes de apagarse (no
+  // "usos" como en lanza/hacha/pico): se descuenta con el tiempo mientras
+  // está equipada (ver updatePlayer en player.js), no por golpe. El resto
+  // del sistema (getDurability/damageTool/repairTool/barra en la UI) es el
+  // mismo, damageTool() no le importa si el amount es 1 (un golpe) o dt
+  // (una fracción de segundo).
+  torch: { label: 'Antorcha', icon: '🔦', image: IMG_BASE + 'torch.png', stack: 1, category: 'tool', durability: 60 }
 };
 
 // Guardado con `typeof document !== 'undefined'` para que este módulo se
@@ -100,6 +114,12 @@ export const state = {
   shelters: [],
   wolves: [],
   deer: [],
+  // Presa chica: huye del jugador igual que el ciervo pero sin manada
+  // (spookDeer avisa a otros ciervos cercanos; el conejo solo reacciona por
+  // sí mismo) y muere de un solo golpe. Ver animals.js (updateRabbits/
+  // hitRabbit/drawRabbit) y world.js (generación + cadáver de una sola
+  // etapa, sin piel/huesos).
+  rabbits: [],
   grassDecor: [],
   // Manchas de sangre en el suelo (jugador o animal golpeado). No están
   // atadas a chunks como grassDecor: son efímeras (se van desvaneciendo
@@ -118,6 +138,13 @@ export const state = {
   // MAX_CORPSES, ver spawnCorpse en world.js), así que sobreviven al
   // descargar/recargar la zona igual que blood/ripple, pero sin desvanecerse.
   corpses: [],
+  // Ítems que el jugador tiró al suelo a propósito (ver dropItem en
+  // inventory.js): { x, y, id, qty }. Mismo criterio que corpses de arriba
+  // -no atados a chunks, se guardan directo en el save, acotados por
+  // MAX_GROUND_ITEMS (ver spawnGroundItem en world.js)-, con la diferencia
+  // de que desaparecen del todo al recogerlos (no hay una segunda etapa
+  // como el desuelle).
+  groundItems: [],
   // Palos y piedras sueltos, recolectables a mano sin ninguna herramienta.
   // Son el único recurso disponible hasta craftear hacha/pico, ya que talar
   // árboles y minar rocas requiere tener esa herramienta en la mano.
@@ -163,8 +190,9 @@ export const state = {
     // via syncInventorySlots(); moveInventorySlot() es lo único que
     // cambia una posición (arrastrar y soltar).
     invSlots: [],
-    // Herramienta actualmente "en la mano" (null, 'axe' o 'pickaxe'). Tenerla
-    // en la mano (no solo poseerla) es lo que habilita talar/minar.
+    // Herramienta actualmente "en la mano" (null, 'axe', 'pickaxe', 'spear'
+    // o 'torch'). Tenerla en la mano (no solo poseerla) es lo que habilita
+    // talar/minar/atacar con lanza/iluminar de noche.
     equippedTool: null,
     attackRange: 34,
     attackDamage: 12,
@@ -244,8 +272,8 @@ export function removeItem(id, qty) {
 }
 
 // ---------- Durabilidad de herramientas ----------
-// Solo lanza/hacha/pico tienen `durability` en ITEMS (ver más arriba), así
-// que solo ellas terminan con un campo `durability` en su slot de
+// Lanza/hacha/pico/antorcha tienen `durability` en ITEMS (ver más arriba),
+// así que son las que terminan con un campo `durability` en su slot de
 // inventario (ver addItem). Como el juego nunca deja tener dos unidades de
 // la misma herramienta a la vez (crafting.js: si ya la tenés, craftear la
 // equipa en vez de duplicarla), no hace falta manejar varias instancias
@@ -286,6 +314,16 @@ export function repairTool(id) {
   const max = maxDurability(id);
   if (!slot || !max) return;
   slot.durability = max;
+}
+
+// Fuerza un valor puntual de durability (no relativo como damageTool). Se
+// usa al recoger del suelo una herramienta que se había tirado con
+// desgaste (ver dropItem/pickUpGroundItem en inventory.js): sin esto,
+// addItem() la reasigna al máximo por tratarse de un slot nuevo, y tirar y
+// recoger una herramienta gastada la "repararía" gratis.
+export function setDurability(id, value) {
+  const slot = findSlot(id);
+  if (slot && typeof slot.durability === 'number') slot.durability = value;
 }
 
 // El inventario ya no tiene límite de capacidad: capFor() devuelve Infinity

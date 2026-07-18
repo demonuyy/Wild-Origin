@@ -1,9 +1,9 @@
 import { state, clamp, dist, DAY_LENGTH, invTotal, capFor, isNightPhase, hasItem, HOTBAR_SIZE, damageTool, ACTION_SWING_DURATION } from './config.js';
 import { pushLog, showHint, updateEquipUI, updateHUD, showInteractPrompt, hideInteractPrompt, isInventoryOpen } from './ui.js';
 import { SoundFX } from './audio.js';
-import { collectTreeResource, collectRockResource, collectBushResource, consumeBerry, collectStick, collectStone, harvestCorpse } from './inventory.js';
+import { collectTreeResource, collectRockResource, collectBushResource, consumeBerry, collectStick, collectStone, harvestCorpse, tryCookMeat, pickUpGroundItem } from './inventory.js';
 import { removeEntity, spawnBlood, spawnRipple, isInWater, spawnCorpse } from './world.js';
-import { hitDeer } from './animals.js';
+import { hitDeer, hitRabbit } from './animals.js';
 
 let footstepTimer = 0;
 // Cadencia del sonido de dolor mientras se está muriendo de hambre/sed (ver
@@ -62,7 +62,9 @@ const INTERACT_LABELS = {
   stick: 'Recoger',
   stone: 'Recoger',
   shelter: 'Dormir',
-  pond: 'Beber'
+  pond: 'Beber',
+  campfire: 'Cocinar',
+  groundItem: 'Recoger'
 };
 
 // Caso aparte: el cadáver tiene dos etapas (ver harvestCorpse en
@@ -124,11 +126,27 @@ function findNearestInteractable() {
       best = { type: 'corpse', obj: c };
     }
   }
+  for (const g of state.groundItems) {
+    const d = dist(state.player.x, state.player.y, g.x, g.y);
+    if (d < bestD) {
+      bestD = d;
+      best = { type: 'groundItem', obj: g };
+    }
+  }
   for (const s of state.shelters) {
     const d = dist(state.player.x, state.player.y, s.x, s.y);
     if (d < bestD) {
       bestD = d;
       best = { type: 'shelter', obj: s };
+    }
+  }
+  // Cualquier fogata en pie cuenta como "encendida" (life > 0 mientras
+  // exista, ver crafting.js/game.js): acercarse ofrece cocinar carne cruda.
+  for (const f of state.campfires) {
+    const d = dist(state.player.x, state.player.y, f.x, f.y);
+    if (d < bestD) {
+      bestD = d;
+      best = { type: 'campfire', obj: f };
     }
   }
   for (const p of state.ponds) {
@@ -189,6 +207,10 @@ export function tryInteract() {
     pushLog('Bebiste agua fresca');
   } else if (best.type === 'shelter') {
     trySleep();
+  } else if (best.type === 'campfire') {
+    tryCookMeat();
+  } else if (best.type === 'groundItem') {
+    pickUpGroundItem(best.obj);
   }
 }
 
@@ -239,6 +261,12 @@ export function tryAttack() {
   for (const d of state.deer) {
     if (dist(state.player.x, state.player.y, d.x, d.y) < range) {
       hitDeer(d, damage);
+      hitSomething = true;
+    }
+  }
+  for (const r of state.rabbits) {
+    if (dist(state.player.x, state.player.y, r.x, r.y) < range) {
+      hitRabbit(r, damage);
       hitSomething = true;
     }
   }
@@ -341,6 +369,14 @@ export function updatePlayer(dt) {
   if (player.attackCooldown > 0) player.attackCooldown -= dt;
   if (player.hitFlash > 0) player.hitFlash -= dt;
   if (player.actionAnim > 0) player.actionAnim = Math.max(0, player.actionAnim - dt);
+  // La antorcha se gasta por TIEMPO equipada (no por golpe, como
+  // lanza/hacha/pico): cada segundo en la mano cuenta como 1 de
+  // durability. Si llega a 0 se apaga sola (damageTool ya la saca del
+  // inventario y la desequipa).
+  if (player.equippedTool === 'torch' && damageTool('torch', dt)) {
+    SoundFX.craftFail();
+    pushLog('La antorcha se apagó y se consumió del todo');
+  }
 }
 
 export function handleManualEat() {

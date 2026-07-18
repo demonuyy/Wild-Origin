@@ -1,4 +1,4 @@
-import { state, CHUNK_SIZE, rand, dist, clamp } from './config.js';
+import { state, CHUNK_SIZE, rand, dist, clamp, ITEMS } from './config.js';
 
 // ---------- Ruido de valor 2D (continuo, sin dependencias externas) ----------
 // Define "biomas" suaves (zonas más boscosas, más rocosas, etc.) que son iguales
@@ -62,6 +62,10 @@ const TREE_VARIANTS = 3;
 const BUSH_VARIANTS = 2;
 const WOLF_VARIANTS = 3;
 const DEER_VARIANTS = 3;
+// Paletas del conejo: ver RABBIT_PALETTES en animals.js (mismo criterio que
+// WOLF_VARIANTS/DEER_VARIANTS de arriba: un solo lugar por módulo para no
+// crear un import circular).
+const RABBIT_VARIANTS = 2;
 
 // Cantidad de siluetas distintas por tipo de entidad (independiente del
 // color): TREE_SHAPES en drawTree, ROCK_SHAPES en drawRock. Se sortea junto
@@ -89,6 +93,7 @@ export function generateWorld() {
   state.shelters = [];
   state.wolves = [];
   state.deer = [];
+  state.rabbits = [];
   state.grassDecor = [];
   state.bloodDecals = [];
   state.rippleDecals = [];
@@ -112,7 +117,7 @@ export function restoreChunksFromSave() {
   state.chunkStore = {};
   const lists = {
     trees: state.trees, rocks: state.rocks, bushes: state.bushes, ponds: state.ponds,
-    wolves: state.wolves, deer: state.deer, grassDecor: state.grassDecor,
+    wolves: state.wolves, deer: state.deer, rabbits: state.rabbits, grassDecor: state.grassDecor,
     sticks: state.sticks, stones: state.stones
   };
   for (const [name, arr] of Object.entries(lists)) {
@@ -120,7 +125,7 @@ export function restoreChunksFromSave() {
       const key = obj.chunkKey;
       if (!key) continue;
       if (!state.chunkStore[key]) {
-        state.chunkStore[key] = { trees: [], rocks: [], bushes: [], ponds: [], wolves: [], deer: [], grassDecor: [], sticks: [], stones: [] };
+        state.chunkStore[key] = { trees: [], rocks: [], bushes: [], ponds: [], wolves: [], deer: [], rabbits: [], grassDecor: [], sticks: [], stones: [] };
       }
       state.chunkStore[key][name].push(obj);
     }
@@ -135,7 +140,7 @@ function generateChunk(cx, cy) {
   const ox = cx * CHUNK_SIZE, oy = cy * CHUNK_SIZE;
   const nearSpawn = (x, y) => dist(x, y, 0, 0) < 260;
 
-  const trees = [], rocks = [], bushes = [], ponds = [], wolves = [], deer = [], grassDecor = [], sticks = [], stones = [];
+  const trees = [], rocks = [], bushes = [], ponds = [], wolves = [], deer = [], rabbits = [], grassDecor = [], sticks = [], stones = [];
 
   const tryPlace = (list, attempts, noiseFn, factory) => {
     for (let i = 0; i < attempts; i++) {
@@ -199,11 +204,24 @@ function generateChunk(cx, cy) {
     const y = oy + crand(0, CHUNK_SIZE);
     if (!nearSpawn(x, y)) deer.push({ x, y, speed: 110, health: 18, maxHealth: 18, wanderTarget: null, state: 'graze', grazeTimer: crand(2, 6), alertCd: 0, chunkKey: key, variant: Math.floor(rnd() * DEER_VARIANTS) });
   }
+  // Conejos: más comunes que el ciervo/lobo (presa chica y abundante) y a
+  // veces aparecen de a 2-3 juntos (una "camada"), a diferencia del resto de
+  // los animales que siempre spawnean de a uno.
+  if (rnd() < 0.6) {
+    const count = 1 + Math.floor(rnd() * 3);
+    for (let i = 0; i < count; i++) {
+      const x = ox + crand(0, CHUNK_SIZE);
+      const y = oy + crand(0, CHUNK_SIZE);
+      if (!nearSpawn(x, y)) {
+        rabbits.push({ x, y, speed: crand(80, 100), health: 6, maxHealth: 6, wanderTarget: null, state: 'wander', chunkKey: key, variant: Math.floor(rnd() * RABBIT_VARIANTS) });
+      }
+    }
+  }
   for (let i = 0; i < 22; i++) {
     grassDecor.push({ x: ox + crand(0, CHUNK_SIZE), y: oy + crand(0, CHUNK_SIZE), s: crand(0.5, 1.3), rot: crand(0, Math.PI * 2), chunkKey: key });
   }
 
-  const data = { trees, rocks, bushes, ponds, wolves, deer, grassDecor, sticks, stones };
+  const data = { trees, rocks, bushes, ponds, wolves, deer, rabbits, grassDecor, sticks, stones };
   state.chunkStore[key] = data;
   return data;
 }
@@ -217,6 +235,7 @@ function attachChunk(key) {
   state.ponds.push(...data.ponds);
   state.wolves.push(...data.wolves);
   state.deer.push(...data.deer);
+  state.rabbits.push(...data.rabbits);
   state.grassDecor.push(...data.grassDecor);
   state.sticks.push(...data.sticks);
   state.stones.push(...data.stones);
@@ -230,6 +249,7 @@ function detachChunk(key) {
   state.ponds = state.ponds.filter(o => o.chunkKey !== key);
   state.wolves = state.wolves.filter(o => o.chunkKey !== key);
   state.deer = state.deer.filter(o => o.chunkKey !== key);
+  state.rabbits = state.rabbits.filter(o => o.chunkKey !== key);
   state.grassDecor = state.grassDecor.filter(o => o.chunkKey !== key);
   state.sticks = state.sticks.filter(o => o.chunkKey !== key);
   state.stones = state.stones.filter(o => o.chunkKey !== key);
@@ -428,6 +448,41 @@ export function spawnCorpse(x, y, kind, variant) {
   }
 }
 
+// ---------- Ítems tirados al suelo ----------
+// Igual criterio que MAX_CORPSES arriba: tope simple para que una partida
+// muy larga tirando cosas no acumule entidades sin techo.
+const MAX_GROUND_ITEMS = 40;
+
+// Llamado desde dropItem() en inventory.js. Un pequeño offset aleatorio
+// (en vez de la posición exacta del jugador) evita que tirar varias cosas
+// seguidas las apile todas exactamente superpuestas. `durability` es
+// opcional (undefined para ítems sin desgaste, ver ITEMS en config.js) y
+// viaja con el ítem para que recogerlo no lo "repare" gratis.
+export function spawnGroundItem(x, y, id, qty, durability) {
+  const entry = { x: x + rand(-10, 10), y: y + rand(-10, 10), id, qty };
+  if (typeof durability === 'number') entry.durability = durability;
+  state.groundItems.push(entry);
+  if (state.groundItems.length > MAX_GROUND_ITEMS) {
+    state.groundItems.splice(0, state.groundItems.length - MAX_GROUND_ITEMS);
+  }
+}
+
+// Cache de <img> para poder dibujar el ícono real de cada ítem en el mundo
+// (canvas), reusando los mismos PNG que ya se cargan como <img> en la UI
+// (ver ITEMS[id].image en config.js). Un ítem sin `image` (herramientas
+// viejas sin sprite, si las hubiera) simplemente no dibuja nada hasta que
+// se le agregue una.
+const groundIconCache = {};
+function getGroundIcon(path) {
+  let img = groundIconCache[path];
+  if (!img) {
+    img = new Image();
+    img.src = path;
+    groundIconCache[path] = img;
+  }
+  return img;
+}
+
 // Mismo criterio de color que devuelven WOLF_PALETTES/DEER_PALETTES, pero
 // apagado (más gris, menos saturado) para que se lea como un cuerpo sin
 // vida y no como el animal parado. No se importa directamente de
@@ -444,6 +499,10 @@ const CORPSE_PALETTES = {
     { fur: '#8a6d4c', belly: '#a68a63' },
     { fur: '#6e5236', belly: '#8a6c48' },
     { fur: '#a3855c', belly: '#c0a378' }
+  ],
+  rabbit: [
+    { fur: '#8a8072', belly: '#a89c8c' },
+    { fur: '#5c4632', belly: '#7a604a' }
   ]
 };
 
@@ -481,7 +540,8 @@ export function drawCorpse(c, cam, ctx) {
   // vez de reusar la pose de pie de drawWolf/drawDeer.
   const pal = (CORPSE_PALETTES[c.kind] || CORPSE_PALETTES.wolf)[c.variant] || CORPSE_PALETTES.wolf[0];
   const big = c.kind === 'deer';
-  const bodyRx = big ? 15 : 12, bodyRy = big ? 8 : 7;
+  const small = c.kind === 'rabbit';
+  const bodyRx = big ? 15 : (small ? 8 : 12), bodyRy = big ? 8 : (small ? 5 : 7);
   ctx.fillStyle = pal.fur;
   ctx.beginPath();
   ctx.ellipse(sx, sy, bodyRx, bodyRy, 0.15, 0, Math.PI * 2);
@@ -513,6 +573,39 @@ export function drawCorpse(c, cam, ctx) {
     ctx.lineTo(sx - bodyRx * 0.9, sy + (bodyRy * 0.5 + 4) * side);
     ctx.stroke();
   });
+}
+
+// Ítem tirado al suelo (ver spawnGroundItem arriba / dropItem en
+// inventory.js): sombra + el ícono real del ítem (mismo PNG que la UI) +
+// un numerito si hay más de 1. Si el ícono todavía no terminó de cargar
+// (primer frame en que aparece), se dibuja solo la sombra ese frame nomás;
+// no hace falta esperar nada especial, el próximo frame ya lo encuentra
+// cacheado y completo.
+export function drawGroundItem(g, cam, ctx) {
+  const sx = g.x - cam.x;
+  const sy = g.y - cam.y;
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.beginPath();
+  ctx.ellipse(sx, sy + 5, 9, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const info = ITEMS[g.id];
+  if (info && info.image) {
+    const img = getGroundIcon(info.image);
+    if (img.complete && img.naturalWidth > 0) {
+      const w = 18, h = 18 * (img.naturalHeight / img.naturalWidth);
+      ctx.drawImage(img, sx - w / 2, sy - h / 2, w, h);
+    }
+  }
+  if (g.qty > 1) {
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+    ctx.lineWidth = 3;
+    ctx.strokeText(String(g.qty), sx + 7, sy + 10);
+    ctx.fillText(String(g.qty), sx + 7, sy + 10);
+  }
 }
 
 // Devuelve true si (x,y) cae dentro del óvalo de una laguna (no del halo de

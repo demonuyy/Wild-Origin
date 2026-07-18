@@ -12,7 +12,17 @@
     --stone-gray:#7a7a72;
     --water:#3d6b7a;
   }
-  html,body{margin:0;padding:0;overflow:hidden;background:#0a120c;height:100%;width:100%;font-family:Georgia,'Times New Roman',serif;}
+  html,body{margin:0;padding:0;overflow:hidden;background:#0a120c;height:100%;width:100%;font-family:Georgia,'Times New Roman',serif;
+    /* Nada de texto seleccionable en toda la página: es un juego, no un
+       documento, así que un doble-click o un arrastre accidental sobre el
+       HUD (nombres de ítems, log de eventos, etc.) no debería pintar nada
+       de azul. -webkit-user-select/-webkit-touch-callout cubren Safari;
+       -webkit-tap-highlight-color saca el flash celeste al tocar en mobile
+       (no es lo mismo que user-select, pero es el mismo tipo de "resaltado
+       azul" que un dedo dispara al tocar un botón/casilla). */
+    user-select:none;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;
+    -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;
+  }
   canvas{display:block;image-rendering:pixelated;}
   #ui{position:fixed;inset:0;pointer-events:none;color:var(--mist);}
   .panel{position:absolute;pointer-events:none;}

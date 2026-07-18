@@ -16,7 +16,8 @@ export const RECIPES = {
   axe: { label: 'Hacha', cost: { wood: 5, stone: 3 } },
   pickaxe: { label: 'Pico', cost: { wood: 5, stone: 3 } },
   backpack: { label: 'Mochila', cost: { wood: 8, stone: 4 } },
-  shelter: { label: 'Refugio', cost: { wood: 15, stone: 8 } }
+  shelter: { label: 'Refugio', cost: { wood: 15, stone: 8 } },
+  torch: { label: 'Antorcha', cost: { wood: 3, stone: 1 } }
 };
 
 // `player` ya no se usa acá (el inventario es global en config.js), se deja

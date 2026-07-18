@@ -7,7 +7,8 @@
 import { state, canvas, ZOOM_MIN, ZOOM_MAX, clamp, hasItem, assignHotbar, clearHotbarSlot, swapHotbarSlots, moveInventorySlot } from './config.js';
 import { SoundFX } from './audio.js';
 import { tryInteract, tryAttack, handleManualEat } from './player.js';
-import { tryCraftSpear, tryPlaceCampfire, tryCraftAxe, tryCraftPickaxe, tryCraftBackpack, tryPlaceShelter, tryEquipTool, useItem, tryRepairTool } from './crafting.js';
+import { tryCraftSpear, tryPlaceCampfire, tryCraftAxe, tryCraftPickaxe, tryCraftBackpack, tryPlaceShelter, tryCraftTorch, tryEquipTool, useItem, tryRepairTool } from './crafting.js';
+import { dropItem } from './inventory.js';
 import { toggleInventory, closeInventory, isInventoryOpen, toggleCraftMenu, closeCraftMenu, isCraftMenuOpen, openPause, closePause, updateEquipUI } from './ui.js';
 
 // ---------- Arrastre de la hotbar/inventario ----------
@@ -26,13 +27,24 @@ function slotInfoFromElement(el) {
   if (!el) return null;
   const hotSlot = el.closest && el.closest('.hotSlot[data-slot-index]');
   if (hotSlot) {
-    return { container: 'hotbar', el: hotSlot, slotIndex: Number(hotSlot.dataset.slotIndex), id: hotSlot.dataset.itemId || null };
+    return { container: 'hotbar', el: hotSlot, slotIndex: Number(hotSlot.dataset.slotIndex), id: hotSlot.dataset.itemId || null, qty: Number(hotSlot.dataset.qty) || 0 };
   }
   const invSlot = el.closest && el.closest('.invSlot2');
   if (invSlot) {
-    return { container: 'inventory', el: invSlot, id: invSlot.dataset.itemId || null, slotIndex: Number(invSlot.dataset.slotIndex) };
+    return { container: 'inventory', el: invSlot, id: invSlot.dataset.itemId || null, slotIndex: Number(invSlot.dataset.slotIndex), qty: Number(invSlot.dataset.qty) || 0 };
   }
   return null;
+}
+
+// Verdadero si `el` queda afuera TANTO del panel de inventario como de la
+// hotbar (incluyendo su padding/fondo, no solo las casillas): es lo que
+// separa "se te fue la mano arrastrando dentro del panel" (no pasa nada) de
+// "lo soltaste afuera a propósito" (ver resolveDrop: eso tira el ítem al
+// mundo). Cubre tanto soltar sobre el canvas del juego como sobre el fondo
+// oscurecido del modal.
+function isOutsidePanels(el) {
+  if (!el) return true;
+  return !el.closest('#invPanel') && !el.closest('#hotbar');
 }
 
 // Distancia mínima (px) para considerar que el puntero se está arrastrando
@@ -76,6 +88,12 @@ function resolveDrop(target) {
       }
     }
     updateEquipUI();
+  } else if (isOutsidePanels(target)) {
+    // Se soltó afuera de cualquier casilla Y afuera de ambos paneles (no fue
+    // solo un desliz dentro del panel): tirarlo al mundo, en la posición del
+    // jugador (ver dropItem en inventory.js).
+    dropItem(dragState.id, dragState.qty);
+    updateEquipUI();
   }
 }
 
@@ -92,6 +110,7 @@ function bindDragSource(containerEl, containerType) {
     dragState = {
       origin: containerType,
       id: info.id,
+      qty: info.qty,
       slotIndex: info.slotIndex,
       sourceEl: info.el,
       startX: e.clientX,
@@ -104,6 +123,12 @@ function bindDragSource(containerEl, containerType) {
 export function bindControls() {
   window.addEventListener('keydown', e => {
     state.keys[e.key.toLowerCase()] = true;
+    // e.repeat: true en los keydown que dispara el navegador solo mientras
+    // se mantiene la tecla apretada (auto-repeat del SO). Sin este guard,
+    // mantener "E" apretado sobre algo que falla (ej. talar sin hacha)
+    // vuelve a sonar el error en cada repeat en vez de una sola vez por
+    // pulsación real.
+    if (e.repeat) return;
     if (!state.running || state.gameOver) return;
     if (e.key === 'e' || e.key === 'E') tryInteract();
     if (e.key === ' ') tryAttack();
@@ -118,6 +143,7 @@ export function bindControls() {
   });
   window.addEventListener('keyup', e => { state.keys[e.key.toLowerCase()] = false; });
   window.addEventListener('keydown', e => {
+    if (e.repeat) return;
     if (!state.running || state.gameOver) return;
     if (e.key === 'q' || e.key === 'Q') handleManualEat();
     if (e.key === 'i' || e.key === 'I') toggleInventory();
@@ -184,6 +210,19 @@ export function bindControls() {
     useItem(slot.dataset.itemId);
   });
 
+  // Click derecho: tira el ítem al suelo en la posición del jugador (mismo
+  // dropItem que usa arrastrar-y-soltar afuera de los paneles, ver
+  // resolveDrop más arriba). preventDefault() para que no aparezca el menú
+  // contextual nativo del navegador encima del juego.
+  hotbarEl.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    if (!state.running || state.gameOver || state.paused) return;
+    const slot = e.target.closest('.hotSlot[data-slot-index]');
+    if (!slot || !slot.dataset.itemId) return;
+    dropItem(slot.dataset.itemId, Number(slot.dataset.qty) || 0);
+    updateEquipUI();
+  });
+
   document.getElementById('invToggleBtn').addEventListener('click', () => toggleInventory());
 
   invGrid.addEventListener('click', e => {
@@ -192,6 +231,17 @@ export function bindControls() {
     const slot = e.target.closest('.invSlot2.filled');
     if (!slot || !slot.dataset.itemId) return;
     useItem(slot.dataset.itemId);
+  });
+
+  // Click derecho en el inventario: tira SOLO ese stack puntual (mismo
+  // criterio que arrastrarlo afuera del panel, ver dataset.qty en ui.js).
+  invGrid.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    if (!state.running || state.gameOver || state.paused) return;
+    const slot = e.target.closest('.invSlot2.filled');
+    if (!slot || !slot.dataset.itemId) return;
+    dropItem(slot.dataset.itemId, Number(slot.dataset.qty) || 0);
+    updateEquipUI();
   });
 
   // ---------- Menú de crafteo completo (tecla C) ----------
@@ -204,7 +254,8 @@ export function bindControls() {
     axe: () => { if (hasItem('axe')) tryEquipTool('axe'); else tryCraftAxe(); },
     pickaxe: () => { if (hasItem('pickaxe')) tryEquipTool('pickaxe'); else tryCraftPickaxe(); },
     backpack: tryCraftBackpack,
-    shelter: tryPlaceShelter
+    shelter: tryPlaceShelter,
+    torch: tryCraftTorch
   };
   document.getElementById('craftGrid').addEventListener('click', e => {
     if (!state.running || state.gameOver || state.paused) return;

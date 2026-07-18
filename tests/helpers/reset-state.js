@@ -24,6 +24,9 @@ export function resetState() {
   state.shelters = [];
   state.wolves = [];
   state.deer = [];
+  state.rabbits = [];
+  state.corpses = [];
+  state.groundItems = [];
   state.grassDecor = [];
   state.sticks = [];
   state.stones = [];

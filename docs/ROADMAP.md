@@ -58,11 +58,11 @@
 
 ## v0.3
 
-⬜ Conejos
+✅ Conejos
 
-⬜ Carne
+✅ Carne
 
-⬜ Cocinar
+✅ Cocinar
 
 ⬜ Fogata mejorada
 

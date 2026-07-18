@@ -1,7 +1,7 @@
 import './helpers/dom-shim.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { state, addItem, countItem } from '../js/config.js';
+import { state, addItem, countItem, hasItem, getDurability } from '../js/config.js';
 import { resetState } from './helpers/reset-state.js';
 import {
   collectTreeResource,
@@ -9,8 +9,11 @@ import {
   collectStick,
   collectStone,
   collectBushResource,
-  consumeBerry
+  consumeBerry,
+  dropItem,
+  pickUpGroundItem
 } from '../js/inventory.js';
+import { tryCraftAxe } from '../js/crafting.js';
 
 test('talar un árbol requiere el hacha craftada Y equipada (en la mano)', () => {
   resetState();
@@ -104,4 +107,67 @@ test('consumeBerry resta una baya y suma hambre sin pasarse de 100', () => {
   consumeBerry();
   assert.equal(countItem('berries'), 1);
   assert.equal(state.player.hunger, 100); // clamp: 90 + 22 = 112 -> 100
+});
+
+test('dropItem saca el ítem del inventario y lo deja en state.groundItems', () => {
+  resetState();
+  addItem('wood', 10);
+  state.player.x = 50;
+  state.player.y = -20;
+  dropItem('wood', 4);
+  assert.equal(countItem('wood'), 6);
+  assert.equal(state.groundItems.length, 1);
+  assert.equal(state.groundItems[0].id, 'wood');
+  assert.equal(state.groundItems[0].qty, 4);
+});
+
+test('dropItem nunca tira más de lo que realmente se tiene', () => {
+  resetState();
+  addItem('wood', 3);
+  dropItem('wood', 999);
+  assert.equal(countItem('wood'), 0);
+  assert.equal(state.groundItems[0].qty, 3);
+});
+
+test('dropItem no hace nada si no se tiene ese ítem', () => {
+  resetState();
+  dropItem('wood', 5);
+  assert.equal(state.groundItems.length, 0);
+});
+
+test('tirar la herramienta equipada la desequipa', () => {
+  resetState();
+  addItem('wood', 5);
+  addItem('stone', 3);
+  tryCraftAxe(); // queda equipada
+  assert.equal(state.player.equippedTool, 'axe');
+  dropItem('axe', 1);
+  assert.equal(hasItem('axe'), false);
+  assert.equal(state.player.equippedTool, null);
+});
+
+test('pickUpGroundItem devuelve el ítem al inventario y lo saca del suelo', () => {
+  resetState();
+  addItem('wood', 2);
+  dropItem('wood', 2);
+  assert.equal(countItem('wood'), 0);
+  const ground = state.groundItems[0];
+  pickUpGroundItem(ground);
+  assert.equal(countItem('wood'), 2);
+  assert.equal(state.groundItems.length, 0);
+});
+
+test('tirar y recoger una herramienta gastada NO la repara gratis', () => {
+  resetState();
+  addItem('wood', 5);
+  addItem('stone', 3);
+  tryCraftAxe();
+  const maxDur = getDurability('axe');
+  // Simula una herramienta ya con desgaste antes de tirarla.
+  state.player.inventory.find(s => s.id === 'axe').durability = maxDur - 7;
+  dropItem('axe', 1);
+  const ground = state.groundItems[0];
+  assert.equal(ground.durability, maxDur - 7, 'el desgaste viaja con el ítem tirado');
+  pickUpGroundItem(ground);
+  assert.equal(getDurability('axe'), maxDur - 7, 'sigue gastada al recogerla, no vuelve al máximo');
 });

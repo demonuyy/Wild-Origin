@@ -79,13 +79,34 @@ export function tryCraftPickaxe() {
   }
 }
 
+export function tryCraftTorch() {
+  if (hasItem('torch')) {
+    tryEquipTool('torch');
+    return;
+  }
+  if (canAfford(state.player, RECIPES.torch.cost)) {
+    payCost(state.player, RECIPES.torch.cost);
+    addItem('torch', 1);
+    autoAssignHotbar('torch');
+    // Recién fabricada, queda directamente en la mano (mismo criterio que
+    // el resto de las herramientas).
+    state.player.equippedTool = 'torch';
+    SoundFX.craftOk();
+    updateEquipUI();
+    pushLog('Fabricaste una antorcha: ya la tenés en la mano, ilumina de noche');
+  } else {
+    SoundFX.craftFail();
+    showHint(costHint('torch'));
+  }
+}
+
 // Cambia qué herramienta/arma está "en la mano". Antes solo competían por
-// ese lugar el hacha y el pico; ahora la lanza también, así que se puede
-// craftear y después guardarla para tener las manos libres (antes, una vez
-// crafteada, quedaba "puesta" para siempre sin poder sacársela). La mochila
-// sigue sin necesitarlo (se lleva puesta siempre). Volver a equipar la que
-// ya está en la mano la guarda.
-const TOOL_LABEL = { axe: 'Hacha', pickaxe: 'Pico', spear: 'Lanza' };
+// ese lugar el hacha y el pico; ahora la lanza y la antorcha también, así
+// que se puede craftear y después guardarla para tener las manos libres
+// (antes, una vez crafteada, quedaba "puesta" para siempre sin poder
+// sacársela). La mochila sigue sin necesitarlo (se lleva puesta siempre).
+// Volver a equipar la que ya está en la mano la guarda.
+const TOOL_LABEL = { axe: 'Hacha', pickaxe: 'Pico', spear: 'Lanza', torch: 'Antorcha' };
 
 export function tryEquipTool(tool) {
   if (!hasItem(tool)) return;
@@ -152,10 +173,10 @@ export function tryPlaceShelter() {
 }
 
 // ---------- Reparar herramientas ----------
-// Solo tiene sentido para lanza/hacha/pico (las únicas con `durability` en
-// ITEMS, ver config.js); id llega desde el botón de reparar del menú de
-// crafteo (ver renderCraftGrid/CRAFT_ACTIONS en ui.js/input.js), que ya se
-// encarga de no mostrarlo si no aplica.
+// Solo tiene sentido para lanza/hacha/pico/antorcha (las únicas con
+// `durability` en ITEMS, ver config.js); id llega desde el botón de reparar
+// del menú de crafteo (ver renderCraftGrid/CRAFT_ACTIONS en ui.js/input.js),
+// que ya se encarga de no mostrarlo si no aplica.
 export function tryRepairTool(id) {
   const max = maxDurability(id);
   if (!hasItem(id) || !max) return;
