@@ -45,7 +45,44 @@ function chunkSeed(worldSeed, cx, cy) {
 let forestNoise = null;
 let rockNoise = null;
 let bushNoise = null;
+// Ruido de bioma: a diferencia de forestNoise/rockNoise/bushNoise (que
+// deciden densidad de entidades dentro de un mismo tipo de terreno), este
+// define ZONAS enteras de nieve, a mucha más escala (BIOME_NOISE_SCALE es
+// ~13 veces más grande que NOISE_SCALE) para que las manchas de nieve sean
+// regiones grandes y continuas, no un ruido fino salpicado.
+let biomeNoise = null;
 const NOISE_SCALE = 0.0035;
+const BIOME_NOISE_SCALE = 0.00045;
+// Banda de transición del ruido de bioma: por debajo de SNOW_LOW es
+// "normal" del todo, por encima de SNOW_HIGH es nieve del todo, y en el
+// medio se degrada suave (ver snowFactor) para que el borde del bioma no
+// sea una línea dura.
+const SNOW_LOW = 0.54;
+const SNOW_HIGH = 0.62;
+// Nunca hay nieve pegada al spawn (para que la partida arranque siempre en
+// terreno templado); se atenúa gradualmente entre estos dos radios en vez
+// de cortar de golpe al llegar a SPAWN_SAFE_R.
+const SPAWN_SAFE_R = 500;
+const SPAWN_FADE_R = 900;
+
+// Cuánta "nieve" hay en una posición del mundo, de 0 (nada) a 1 (bioma de
+// nieve pleno). La usan tanto la generación (generateChunk: decide qué
+// entidades spawnean ahí) como el dibujado (drawGround, drawTree, drawRock,
+// y el snowfall de pantalla en render.js), así que el mismo número maneja
+// generación y visual — no hay dos fuentes de verdad para "dónde hay nieve".
+export function snowFactor(x, y) {
+  const spawnFade = clamp((dist(x, y, 0, 0) - SPAWN_SAFE_R) / (SPAWN_FADE_R - SPAWN_SAFE_R), 0, 1);
+  if (spawnFade <= 0) return 0;
+  const n = biomeNoise(x * BIOME_NOISE_SCALE, y * BIOME_NOISE_SCALE);
+  const raw = clamp((n - SNOW_LOW) / (SNOW_HIGH - SNOW_LOW), 0, 1);
+  return raw * spawnFade;
+}
+
+// Atajo booleano para donde solo importa adentro/afuera del bioma (spawnear
+// o no cierta entidad), no el grado de transición.
+export function isSnowBiome(x, y) {
+  return snowFactor(x, y) > 0.5;
+}
 
 function chunkKeyOf(cx, cy) { return cx + ',' + cy; }
 
@@ -80,6 +117,7 @@ function seedNoiseFromWorld() {
   forestNoise = makeNoise2D(state.worldSeed);
   rockNoise = makeNoise2D(state.worldSeed + 4321.7);
   bushNoise = makeNoise2D(state.worldSeed + 8765.3);
+  biomeNoise = makeNoise2D(state.worldSeed + 2468.1);
 }
 
 // Reinicia el mundo: nueva semilla global. A partir de acá todo se genera
@@ -151,6 +189,7 @@ function generateChunk(cx, cy) {
       const density = clamp((n - 0.32) * 2.2, 0, 1);
       if (rnd() > density) continue;
       const obj = factory(x, y);
+      if (!obj) continue;
       obj.chunkKey = key;
       list.push(obj);
     }
@@ -167,7 +206,10 @@ function generateChunk(cx, cy) {
   // igual al recargar la zona.
   tryPlace(trees, 18, forestNoise, (x, y) => ({ x, y, hits: 3, maxHits: 3, size: crand(0.85, 1.3), sway: crand(0, Math.PI * 2), variant: Math.floor(rnd() * TREE_VARIANTS), shape: Math.floor(rnd() * TREE_SHAPES) }));
   tryPlace(rocks, 9, rockNoise, (x, y) => ({ x, y, hits: 4, maxHits: 4, size: crand(0.8, 1.25), shape: Math.floor(rnd() * ROCK_SHAPES) }));
-  tryPlace(bushes, 7, bushNoise, (x, y) => ({ x, y, stock: 3, maxStock: 3, regrowTimer: 0, size: crand(0.85, 1.2), variant: Math.floor(rnd() * BUSH_VARIANTS) }));
+  // Los arbustos con bayas no crecen en el bioma de nieve (hace demasiado
+  // frío); tryPlace ya sortea (x,y) antes de llamar al factory, así que acá
+  // alcanza con descartar el intento si cayó en zona nevada.
+  tryPlace(bushes, 7, bushNoise, (x, y) => (isSnowBiome(x, y) ? null : { x, y, stock: 3, maxStock: 3, regrowTimer: 0, size: crand(0.85, 1.2), variant: Math.floor(rnd() * BUSH_VARIANTS) }));
 
   // Palos y piedras sueltos: no dependen del ruido de bosque/roca (se pueden
   // encontrar en cualquier parte) porque son el recurso inicial para poder
@@ -202,23 +244,28 @@ function generateChunk(cx, cy) {
   if (rnd() < 0.4) {
     const x = ox + crand(0, CHUNK_SIZE);
     const y = oy + crand(0, CHUNK_SIZE);
-    if (!nearSpawn(x, y)) deer.push({ x, y, speed: 110, health: 18, maxHealth: 18, wanderTarget: null, state: 'graze', grazeTimer: crand(2, 6), alertCd: 0, chunkKey: key, variant: Math.floor(rnd() * DEER_VARIANTS) });
+    // El ciervo (presa de bosque/pradera) no aparece en la nieve; el lobo sí
+    // se dejó spawneando ahí arriba (predador de cualquier terreno).
+    if (!nearSpawn(x, y) && !isSnowBiome(x, y)) deer.push({ x, y, speed: 110, health: 18, maxHealth: 18, wanderTarget: null, state: 'graze', grazeTimer: crand(2, 6), alertCd: 0, chunkKey: key, variant: Math.floor(rnd() * DEER_VARIANTS) });
   }
   // Conejos: más comunes que el ciervo/lobo (presa chica y abundante) y a
   // veces aparecen de a 2-3 juntos (una "camada"), a diferencia del resto de
-  // los animales que siempre spawnean de a uno.
+  // los animales que siempre spawnean de a uno. Tampoco aparecen en la nieve.
   if (rnd() < 0.6) {
     const count = 1 + Math.floor(rnd() * 3);
     for (let i = 0; i < count; i++) {
       const x = ox + crand(0, CHUNK_SIZE);
       const y = oy + crand(0, CHUNK_SIZE);
-      if (!nearSpawn(x, y)) {
+      if (!nearSpawn(x, y) && !isSnowBiome(x, y)) {
         rabbits.push({ x, y, speed: crand(80, 100), health: 6, maxHealth: 6, wanderTarget: null, state: 'wander', chunkKey: key, variant: Math.floor(rnd() * RABBIT_VARIANTS) });
       }
     }
   }
   for (let i = 0; i < 22; i++) {
-    grassDecor.push({ x: ox + crand(0, CHUNK_SIZE), y: oy + crand(0, CHUNK_SIZE), s: crand(0.5, 1.3), rot: crand(0, Math.PI * 2), chunkKey: key });
+    const x = ox + crand(0, CHUNK_SIZE), y = oy + crand(0, CHUNK_SIZE);
+    // El pasto decorativo no se dibuja sobre nieve (quedaría un tufo verde
+    // asomando en medio de un suelo blanco); ahí simplemente no se planta.
+    if (!isSnowBiome(x, y)) grassDecor.push({ x, y, s: crand(0.5, 1.3), rot: crand(0, Math.PI * 2), chunkKey: key });
   }
 
   const data = { trees, rocks, bushes, ponds, wolves, deer, rabbits, grassDecor, sticks, stones };
@@ -303,6 +350,64 @@ export function updateChunks(viewW, viewH) {
 
 // ---------- Dibujo ----------
 
+// "Sello" de la mancha de nieve: un canvas chico dibujado UNA sola vez (la
+// primera vez que hace falta) con el gradiente radial ya cocinado adentro.
+// Antes cada celda de la grilla de abajo creaba su propio
+// createRadialGradient() Y lo rellenaba con ctx.arc()+fill() en CADA frame;
+// una vez que el jugador entraba al bioma, la gran mayoría de las celdas
+// visibles dejaban de "saltearse" (amt<=0.03) y pasaban a pagar ese costo
+// todas juntas, frame tras frame — eso era el lag. Con el sello ya
+// pre-renderizado, pintar una mancha es un simple drawImage() con
+// globalAlpha (un blit barato), no un cálculo de gradiente nuevo.
+let snowStamp = null;
+function getSnowStamp(radius) {
+  if (snowStamp) return snowStamp;
+  const size = radius * 2;
+  const c = document.createElement('canvas');
+  c.width = size;
+  c.height = size;
+  const sctx = c.getContext('2d');
+  const g = sctx.createRadialGradient(radius, radius, 0, radius, radius, radius);
+  g.addColorStop(0, 'rgba(228,238,242,0.85)');
+  g.addColorStop(0.7, 'rgba(228,238,242,0.5)');
+  g.addColorStop(1, 'rgba(228,238,242,0)');
+  sctx.fillStyle = g;
+  sctx.beginPath();
+  sctx.arc(radius, radius, radius, 0, Math.PI * 2);
+  sctx.fill();
+  snowStamp = c;
+  return c;
+}
+
+// Nieve del bioma: se pinta ENCIMA del pasto en manchas grandes y
+// superpuestas (no como una capa aparte con un borde recto) usando
+// snowFactor() en cada punto de muestreo, así el límite entre bioma nevado
+// y pasto se ve degradado en vez de una línea dura. Cada mancha es el
+// sello de arriba estampado con drawImage(), con la intensidad de
+// snowFactor() aplicada como transparencia (globalAlpha) en vez de estar
+// horneada en el sello — así un mismo sello sirve para cualquier valor de
+// snowFactor entre 0 y 1.
+const SNOW_STEP = 210;
+const SNOW_R = 260;
+function drawSnowGround(ctx, cam, viewW, viewH) {
+  const stamp = getSnowStamp(SNOW_R);
+  const snowStartCx = Math.floor(cam.x / SNOW_STEP) - 1;
+  const snowEndCx = Math.floor((cam.x + viewW) / SNOW_STEP) + 1;
+  const snowStartCy = Math.floor(cam.y / SNOW_STEP) - 1;
+  const snowEndCy = Math.floor((cam.y + viewH) / SNOW_STEP) + 1;
+  for (let cx = snowStartCx; cx <= snowEndCx; cx++) {
+    for (let cy = snowStartCy; cy <= snowEndCy; cy++) {
+      const wx = cx * SNOW_STEP, wy = cy * SNOW_STEP;
+      const amt = snowFactor(wx, wy);
+      if (amt <= 0.03) continue;
+      const px = wx - cam.x, py = wy - cam.y;
+      ctx.globalAlpha = amt;
+      ctx.drawImage(stamp, px - SNOW_R, py - SNOW_R);
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
 export function drawGround(ctx, canvas, cam) {
   const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
   grad.addColorStop(0, '#2a4527');
@@ -334,6 +439,8 @@ export function drawGround(ctx, canvas, cam) {
       ctx.fill();
     }
   }
+
+  drawSnowGround(ctx, cam, canvas.width, canvas.height);
 }
 
 export function drawGrassDecor(ctx, cam, viewW, viewH) {
@@ -858,6 +965,26 @@ export function drawTree(t, cam, ctx) {
   }
   ctx.restore();
 
+  // Dusting de nieve sobre la copa: no es un campo guardado en el árbol, se
+  // decide en el momento a partir de su posición (mismo criterio que ya
+  // usa el musgo de las rocas más abajo) — así que un árbol "sabe" si está
+  // nevado sin que generateChunk tenga que marcarlo de antemano.
+  if (isSnowBiome(t.x, t.y)) {
+    ctx.save();
+    ctx.translate(sx, sy + canopyY);
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.beginPath();
+    ctx.ellipse(wind * 0.4, -6 * s, 13 * s, 5.5 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(wind * 0.5 - 9 * s, 1 * s, 7 * s, 3.5 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(wind * 0.3 + 9 * s, -1 * s, 6 * s, 3 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   if (t.hits < t.maxHits) {
     ctx.strokeStyle = 'rgba(203,216,195,0.5)';
     ctx.strokeRect(sx - 16, sy - 40, 32 * (t.hits / t.maxHits), 4);
@@ -941,11 +1068,25 @@ export function drawRock(r, cam, ctx) {
   ctx.closePath();
   ctx.fill();
 
-  // Musgo: solo en algunas rocas (determinístico según su posición, no cambia entre frames).
-  if (((r.x * 12.9898 + r.y * 78.233) % 1 + 1) % 1 > 0.6) {
+  // Musgo: solo en algunas rocas (determinístico según su posición, no
+  // cambia entre frames) y nunca en el bioma de nieve (no crece musgo con
+  // este frío).
+  if (!isSnowBiome(r.x, r.y) && ((r.x * 12.9898 + r.y * 78.233) % 1 + 1) % 1 > 0.6) {
     ctx.fillStyle = 'rgba(90,120,55,0.55)';
     ctx.beginPath();
     ctx.ellipse(sx - 6 * s, sy + 2 * s, 5 * s, 3 * s, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Nieve encima de la roca (misma idea que el dusting del árbol: se decide
+  // en el momento según la posición, no es un campo guardado).
+  if (isSnowBiome(r.x, r.y)) {
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.beginPath();
+    ctx.ellipse(sx - 3 * s, sy - 9 * s, 9 * s, 4 * s, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(sx + 5 * s, sy - 4 * s, 5 * s, 2.5 * s, -0.3, 0, Math.PI * 2);
     ctx.fill();
   }
 }

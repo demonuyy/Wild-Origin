@@ -3,7 +3,7 @@
 // llama a render() una vez por frame.
 import { state, ctx, canvas, DAY_LENGTH, ZOOM_MIN, ZOOM_DEFAULT, clamp, hasItem, ACTION_SWING_DURATION } from './config.js';
 import { SoundFX } from './audio.js';
-import { drawGround, drawGrassDecor, drawBloodDecals, drawPonds, drawRippleDecals, drawTree, drawRock, drawBush, drawStick, drawStone, drawCorpse, drawGroundItem } from './world.js';
+import { drawGround, drawGrassDecor, drawBloodDecals, drawPonds, drawRippleDecals, drawTree, drawRock, drawBush, drawStick, drawStone, drawCorpse, drawGroundItem, snowFactor } from './world.js';
 import { drawDeer, drawRabbit } from './animals.js';
 import { drawWolf } from './enemies.js';
 import { drawCampfire, drawShelter } from './building.js';
@@ -24,6 +24,20 @@ function renderMinimap(cam, viewW, viewH) {
   mctx.clearRect(0, 0, W, H);
   mctx.fillStyle = '#1c2e1a';
   mctx.fillRect(0, 0, W, H);
+
+  // Tinte del bioma de nieve en el minimapa: una grilla bien gruesa (no
+  // hace falta más detalle en un mapa tan chico) que muestra dónde está el
+  // bioma sin tener que caminar hasta ahí para descubrirlo.
+  const MM_STEP = 150; // en unidades de mundo
+  for (let wx = px - MINIMAP_RANGE; wx <= px + MINIMAP_RANGE; wx += MM_STEP) {
+    for (let wy = py - MINIMAP_RANGE; wy <= py + MINIMAP_RANGE; wy += MM_STEP) {
+      const amt = snowFactor(wx, wy);
+      if (amt <= 0.05) continue;
+      const [mx, my] = toMap(wx, wy);
+      mctx.fillStyle = `rgba(226,236,240,${amt * 0.9})`;
+      mctx.fillRect(mx - (MM_STEP * scale) / 2, my - (MM_STEP * scale) / 2, MM_STEP * scale + 1, MM_STEP * scale + 1);
+    }
+  }
 
   mctx.fillStyle = '#3d6b7a';
   for (const p of state.ponds) { const [mx, my] = toMap(p.x, p.y); mctx.beginPath(); mctx.arc(mx, my, 2.2, 0, Math.PI * 2); mctx.fill(); }
@@ -489,6 +503,34 @@ function drawFogLayer(t) {
   ctx.restore();
 }
 
+// Nevada de pantalla mientras el jugador está en el bioma de nieve: un pool
+// fijo de copos (misma idea que FOG_PUFFS, en espacio de pantalla, en loop
+// infinito por módulo) que caen con una leve deriva lateral tipo viento.
+// `t` es snowFactor(jugador) (0 a 1), así que se desvanece solo al salir
+// del bioma en vez de aparecer/desaparecer de golpe.
+const SNOWFLAKES = Array.from({ length: 46 }, (_, i) => ({
+  seed: (i * 0.6180339887) % 1,
+  seedY: (i * 0.3559) % 1,
+  fall: 40 + (i % 7) * 9,
+  drift: 8 + (i % 5) * 4,
+  size: 1.3 + (i % 4) * 0.7
+}));
+
+function drawSnowfall(t) {
+  if (t <= 0.02) return;
+  const w = canvas.width, h = canvas.height;
+  ctx.save();
+  ctx.fillStyle = `rgba(255,255,255,${0.75 * t})`;
+  for (const f of SNOWFLAKES) {
+    const py = (((f.seedY * h + state.elapsed * f.fall) % (h + 20)) + (h + 20)) % (h + 20) - 10;
+    const px = (((f.seed * w + state.elapsed * f.drift + Math.sin(state.elapsed * 0.5 + f.seed * 6) * 18) % (w + 20)) + (w + 20)) % (w + 20) - 10;
+    ctx.beginPath();
+    ctx.arc(px, py, f.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 // Dibuja un frame completo: terreno, entidades ordenadas por Y, oscuridad
 // día/noche y minimapa. Llamado una vez por frame desde el loop de game.js.
 export function render() {
@@ -559,6 +601,9 @@ export function render() {
   const zoomFog = clamp((ZOOM_DEFAULT - zoom) / (ZOOM_DEFAULT - ZOOM_MIN), 0, 1);
   drawFogLayer(zoomFog);
   SoundFX.setZoomFog(zoomFog);
+  // Nevada de pantalla: se desvanece con snowFactor del jugador, así que
+  // entrar/salir del bioma de nieve es gradual, no un corte.
+  drawSnowfall(snowFactor(state.player.x, state.player.y));
 
   const phase = (state.elapsed % DAY_LENGTH) / DAY_LENGTH;
   let darkness = 0;
