@@ -32,16 +32,34 @@ const SAMPLE_FILES = {
   deerSnort: ['animals/deer_snort.wav'],
   deerHurt: ['animals/deer_hurt_1.wav', 'animals/deer_hurt_2.wav', 'animals/deer_hurt_3.wav'],
   deerDead: ['animals/deer_dead _1.wav'],
+  // Conejo: antes reusaba deerHurt/deerDead como placeholder (ver hitRabbit
+  // en animals.js) porque no había samples propios todavía.
+  rabbitHurt: ['animals/rabbit_hurt_1.wav', 'animals/rabbit_hurt_2.wav'],
+  rabbitDead: ['animals/rabbit_dead_1.wav', 'animals/rabbit_dead_2.wav'],
   footstepAnimal: ['animals/footstep_animal_1.wav', 'animals/footstep_animal_2.wav', 'animals/footstep_animal_3.wav', 'animals/footstep_animal_4.wav', 'animals/footstep_animal_5.wav', 'animals/footstep_animal_6.wav'],
   // Recolección a mano: antes un mismo tono synth para palos y piedras sueltas.
   // Ahora un rustle de arbusto/pasto para palos y un golpe de roca para piedras.
   pickupRustle: ['items/pickup_rustle_1.wav', 'items/pickup_rustle_2.wav', 'items/pickup_rustle_3.wav', 'items/pickup_rustle_4.wav', 'items/pickup_rustle_5.wav'],
   pickupRock: ['items/pickup_rock_1.wav', 'items/pickup_rock_2.wav'],
+  // Juntar huesos, primera etapa de desuelle (carne+piel) de lobo/ciervo, y
+  // tirar un ítem al suelo (ver harvestCorpse/dropItem en inventory.js).
+  // Antes las tres reusaban pickupRustle/pickupRock como placeholder.
+  pickupBone: ['items/pickup_bone_1.wav', 'items/pickup_bone_2.wav'],
+  skinning: ['items/skinning.wav'],
+  drop: ['items/drop.wav'],
+  // Cocinar carne en la fogata (ver tryCookMeat en inventory.js). Antes
+  // reusaba craftOk() como placeholder.
+  cookMeat: ['items/meat_sear.wav'],
   // UI: abrir/cerrar inventario y equipar herramienta (se reutiliza el sample
   // de cota de malla como "clank" genérico de equipar, no hay uno más específico).
   bagOpen: ['ui/open_bag.wav'],
   bagClose: ['ui/close_bag.wav'],
-  equipClank: ['ui/chainmail1.wav', 'ui/chainmail2.wav']
+  equipClank: ['ui/chainmail1.wav', 'ui/chainmail2.wav'],
+  // Crafteo de un ítem en la mano (lanza/hacha/pico/antorcha/mochila) vs.
+  // construir algo en el mundo (fogata/refugio). Antes ambos casos sonaban
+  // con el mismo tono sintetizado de craftOk().
+  craft: ['ui/craft.wav'],
+  building: ['ui/building.wav']
 };
 
 const SoundFX = (function () {
@@ -309,12 +327,35 @@ const SoundFX = (function () {
         tone(rand(500, 700), 0.12, 'triangle', 0.2, rand(750, 900));
       }
     },
-    // kind: 'rock' para piedras sueltas, cualquier otra cosa (o nada) para
-    // palos/rustle genérico. Cae al tono sintetizado si el sample no cargó.
+    // kind: 'rock' para piedras sueltas, 'bone' para juntar huesos de un
+    // cadáver (ver harvestCorpse en inventory.js), cualquier otra cosa (o
+    // nada) para palos/rustle genérico. Cae al tono sintetizado si el
+    // sample no cargó.
     pickup(kind) {
-      const key = kind === 'rock' ? 'pickupRock' : 'pickupRustle';
+      const key = kind === 'rock' ? 'pickupRock' : kind === 'bone' ? 'pickupBone' : 'pickupRustle';
       if (!playRandom(key, { vol: 0.35, rateJitter: 0.1 })) {
         tone(rand(340, 420), 0.09, 'triangle', 0.18, rand(260, 320));
+      }
+    },
+    // Primer desuelle de un cadáver de lobo/ciervo (carne + piel), ver
+    // harvestCorpse en inventory.js. Distinto de pickup('bone'), que es la
+    // segunda etapa (juntar los huesos).
+    skinning() {
+      if (!playRandom('skinning', { vol: 0.4, rateJitter: 0.06 })) {
+        noiseBurst(0.18, 'lowpass', 900, 0.25);
+      }
+    },
+    // Tirar un ítem al suelo (click derecho, o arrastrarlo afuera de los
+    // paneles, ver dropItem en inventory.js).
+    drop() {
+      if (!playRandom('drop', { vol: 0.35, rateJitter: 0.1 })) {
+        tone(rand(280, 340), 0.1, 'triangle', 0.18, rand(180, 220));
+      }
+    },
+    // Cocinar carne cruda en la fogata (ver tryCookMeat en inventory.js).
+    cookMeat() {
+      if (!playRandom('cookMeat', { vol: 0.4, rateJitter: 0.05 })) {
+        noiseBurst(0.3, 'highpass', 3000, 0.15);
       }
     },
     drink() {
@@ -343,8 +384,24 @@ const SoundFX = (function () {
         tone(300, 0.08, 'sine', 0.1, 180);
       }
     },
-    craftOk() { tone(440, 0.1, 'triangle', 0.25, 660); setTimeout(() => tone(660, 0.15, 'triangle', 0.22, 880), 90); },
+    // Crafteo de un ítem que termina en la mano/inventario (lanza, hacha,
+    // pico, antorcha, mochila). Ver building() para levantar algo en el
+    // mundo (fogata, refugio), que suena distinto.
+    craftOk() {
+      if (!playRandom('craft', { vol: 0.45, rateJitter: 0.05 })) {
+        tone(440, 0.1, 'triangle', 0.25, 660);
+        setTimeout(() => tone(660, 0.15, 'triangle', 0.22, 880), 90);
+      }
+    },
     craftFail() { tone(180, 0.2, 'sawtooth', 0.2, 120); },
+    // Levantar algo en el mundo: fogata, refugio (ver tryPlaceCampfire/
+    // tryPlaceShelter en crafting.js). Antes reusaba craftOk().
+    building() {
+      if (!playRandom('building', { vol: 0.5, rateJitter: 0.04 })) {
+        tone(220, 0.12, 'triangle', 0.25, 330);
+        setTimeout(() => tone(160, 0.2, 'triangle', 0.2, 110), 100);
+      }
+    },
     // Gruñido de aviso al entrar en modo persecución. x,y = posición del lobo.
     wolfGrowl(x, y) {
       const f = hearFactor(x, y);
@@ -394,6 +451,19 @@ const SoundFX = (function () {
       const f = hearFactor(x, y);
       if (f <= 0) return;
       if (!playRandom('deerDead', { vol: 0.4 * f, rateJitter: 0.04 })) tone(260, 0.35, 'sawtooth', 0.2 * f, 90);
+    },
+    // Conejo golpeado/muerto. Antes reusaban deerHurt/deerDead como
+    // placeholder (ver hitRabbit en animals.js); volumen más bajo que el
+    // ciervo porque es una presa mucho más chica.
+    rabbitHurt(x, y) {
+      const f = hearFactor(x, y);
+      if (f <= 0) return;
+      if (!playRandom('rabbitHurt', { vol: 0.35 * f, rateJitter: 0.08 })) noiseBurst(0.08, 'bandpass', 1600, 0.2 * f);
+    },
+    rabbitDeath(x, y) {
+      const f = hearFactor(x, y);
+      if (f <= 0) return;
+      if (!playRandom('rabbitDead', { vol: 0.35 * f, rateJitter: 0.05 })) tone(320, 0.2, 'sawtooth', 0.15 * f, 100);
     },
     // Pisadas de animal (lobo persiguiendo, ciervo huyendo), más grave/discreto
     // que el paso del jugador. x,y = posición del animal.

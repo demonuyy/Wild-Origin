@@ -146,10 +146,39 @@ casillas, cada una `null` o un id de `ITEMS` que el jugador YA posee.
   `{ container, id, slotIndex }`, y `resolveDrop()` el único que decide qué
   hacer al soltar — si se agrega un tercer contenedor arrastrable en el
   futuro, esos dos son los que hay que tocar.
+- "Usar" un ítem (click para equipar/comer) se resuelve DIRECTO en el mismo
+  handler de `pointerup`, no en un listener de `click` aparte. Antes había
+  dos mecanismos separados (Pointer Events para arrastrar + `click` nativo
+  para usar) que tenían que coordinarse con un flag de "suprimir el próximo
+  click" — esa coordinación entre dos sistemas de eventos distintos era en
+  sí misma una fuente de bugs sutiles entre navegadores. Ahora hay un único
+  mecanismo: si `pointerup` nunca superó `DRAG_THRESHOLD`, fue un click; si
+  lo superó pero terminó soltando sobre la misma casilla de origen (mano
+  temblorosa/trackpad), también se trata como click.
 - El panel de inventario tiene 2 filas de 5 (10 casillas) por defecto y pasa
   a 4 filas (20) apenas `hasItem('backpack')` es true (`invSlotCount()` en
   ui.js + clase `.expanded` en CSS). Si en el futuro se agrega otro ítem que
   también debería agrandar el inventario, ese es el lugar a tocar.
+
+---
+
+## Audio (samples reales + respaldo sintetizado)
+
+`js/audio.js`: `SAMPLE_FILES` mapea una categoría (ej. `craft`, `rabbitHurt`)
+a una lista de archivos bajo `assets/audio/<carpeta>/`; si hay más de uno se
+elige al azar (variación). Cada método de `SoundFX` (ej. `craftOk()`,
+`rabbitHurt()`) intenta `playRandom(categoría)` y, si el sample no cargó
+(404, formato no soportado), cae a un tono/ruido sintetizado como respaldo
+— por eso el juego nunca queda mudo aunque falte un archivo.
+
+Para agregar un sonido nuevo: 1) copiar el archivo a la carpeta que
+corresponda (`animals/`, `items/`, `player/`, `tools/`, `ui/`, `ambient/`),
+2) agregarlo a `SAMPLE_FILES`, 3) exponer/reusar un método de `SoundFX`, con
+su respaldo sintetizado, 4) llamarlo desde el lugar del código donde pasa
+la acción (no todos los `pickup()`/`craftOk()` genéricos deberían quedar
+así para siempre — si el sonido reusado era solo un placeholder porque no
+había sample propio todavía, al agregar el sample real conviene separarlo
+en su propio método en vez de seguir reusando el genérico).
 
 ---
 

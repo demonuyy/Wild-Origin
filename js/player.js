@@ -232,6 +232,21 @@ export function trySleep() {
   pushLog('Dormiste a salvo hasta el amanecer');
 }
 
+// Verdadero si hay un lobo/ciervo/conejo lo bastante cerca como para que un
+// tryAttack() ahora mismo le pegue a algo. Se usa desde el click del mundo
+// (ver input.js) para decidir SIN atacar todavía si ese click debería
+// atacar o interactuar (ver comentario en el listener de click de
+// input.js) — por eso repite el mismo rango que tryAttack en vez de
+// llamarlo directamente, que además reproduce sonido y gasta cooldown.
+export function hasAttackTarget() {
+  const wielding = state.player.equippedTool === 'spear';
+  const range = wielding ? SPEAR_RANGE : state.player.attackRange;
+  for (const w of state.wolves) if (dist(state.player.x, state.player.y, w.x, w.y) < range) return true;
+  for (const d of state.deer) if (dist(state.player.x, state.player.y, d.x, d.y) < range) return true;
+  for (const r of state.rabbits) if (dist(state.player.x, state.player.y, r.x, r.y) < range) return true;
+  return false;
+}
+
 export function tryAttack() {
   if (state.player.attackCooldown > 0) return;
   const wielding = state.player.equippedTool === 'spear';

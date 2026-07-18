@@ -31,7 +31,7 @@ export function tryPlaceCampfire() {
   if (canAfford(state.player, RECIPES.campfire.cost)) {
     payCost(state.player, RECIPES.campfire.cost);
     state.campfires.push({ x: state.player.x, y: state.player.y, life: 220, pulse: 0 });
-    SoundFX.craftOk();
+    SoundFX.building();
     pushLog('Encendiste una fogata');
   } else {
     SoundFX.craftFail();
@@ -164,7 +164,7 @@ export function tryPlaceShelter() {
   if (canAfford(state.player, RECIPES.shelter.cost)) {
     payCost(state.player, RECIPES.shelter.cost);
     state.shelters.push({ x: state.player.x, y: state.player.y });
-    SoundFX.craftOk();
+    SoundFX.building();
     pushLog('Construiste un refugio: zona segura. "E" para dormir');
   } else {
     SoundFX.craftFail();

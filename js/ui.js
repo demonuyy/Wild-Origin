@@ -233,10 +233,17 @@ function renderCraftGrid() {
     const repairBtnHtml = owned && max && durability < max
       ? '<div class="repairBtn" title="Reparar">🔧</div>'
       : '';
+    // Math.ceil(durability): la antorcha se gasta en segundos reales (resta
+    // dt por frame en vez de en pasos enteros como lanza/hacha/pico), así
+    // que el número guardado es un float con muchos decimales. Se redondea
+    // solo acá, al mostrarlo — el valor guardado en config.js se mantiene
+    // preciso para que el desgaste no pierda precisión con el redondeo.
+    // Ceil en vez de round para no mostrar "0/60" mientras todavía queda
+    // una fracción de segundo de llama.
     el.innerHTML = itemIconHtml(cfg, 'craftIcon') +
       `<span class="craftName">${RECIPES[action].label}</span>` +
       (owned && max ? durabilityBarHtml(action) : '') +
-      `<span class="craftCost">${statusLabel}${owned && max ? ` (${durability}/${max})` : ''}</span>` +
+      `<span class="craftCost">${statusLabel}${owned && max ? ` (${Math.ceil(durability)}/${max})` : ''}</span>` +
       repairBtnHtml;
     grid.appendChild(el);
   }

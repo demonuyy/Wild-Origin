@@ -140,13 +140,13 @@ export function hitRabbit(r, damage) {
   r.health -= damage;
   r.knockX = r.x - state.player.x;
   r.knockY = r.y - state.player.y;
-  SoundFX.deerHurt(r.x, r.y);
+  SoundFX.rabbitHurt(r.x, r.y);
   spawnBlood(r.x, r.y, 2);
   spookRabbit(r, state.player.x, state.player.y);
   if (r.health <= 0) {
     removeEntity('rabbits', r);
     spawnCorpse(r.x, r.y, 'rabbit', r.variant);
-    SoundFX.deerDeath(r.x, r.y);
+    SoundFX.rabbitDeath(r.x, r.y);
     spawnBlood(r.x, r.y, 3);
     pushLog('El conejo cayó');
     return true;

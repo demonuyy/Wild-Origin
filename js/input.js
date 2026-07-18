@@ -6,7 +6,7 @@
 // callbacks de un lado a otro sin ganar mucha claridad a cambio.
 import { state, canvas, ZOOM_MIN, ZOOM_MAX, clamp, hasItem, assignHotbar, clearHotbarSlot, swapHotbarSlots, moveInventorySlot } from './config.js';
 import { SoundFX } from './audio.js';
-import { tryInteract, tryAttack, handleManualEat } from './player.js';
+import { tryInteract, tryAttack, handleManualEat, hasAttackTarget } from './player.js';
 import { tryCraftSpear, tryPlaceCampfire, tryCraftAxe, tryCraftPickaxe, tryCraftBackpack, tryPlaceShelter, tryCraftTorch, tryEquipTool, useItem, tryRepairTool } from './crafting.js';
 import { dropItem } from './inventory.js';
 import { toggleInventory, closeInventory, isInventoryOpen, toggleCraftMenu, closeCraftMenu, isCraftMenuOpen, openPause, closePause, updateEquipUI } from './ui.js';
@@ -48,14 +48,13 @@ function isOutsidePanels(el) {
 }
 
 // Distancia mínima (px) para considerar que el puntero se está arrastrando
-// y no simplemente clickeando con la mano un poco temblorosa.
-const DRAG_THRESHOLD = 6;
+// y no simplemente clickeando con la mano un poco temblorosa. El chequeo de
+// "soltó sobre la misma casilla" en pointerup (más abajo) ya cubre la mayor
+// parte de los falsos positivos, así que este número no necesita ser muy
+// alto — pero un poco de margen extra no está de más.
+const DRAG_THRESHOLD = 8;
 
 let dragState = null;
-// Se pone en true justo después de soltar un drag real, para que el 'click'
-// que el navegador dispara igual al terminar el gesto no dispare también
-// "usar ítem" encima del reordenamiento que acaba de pasar.
-let suppressNextClick = false;
 
 function clearDragVisuals() {
   document.querySelectorAll('.dragOver').forEach(el => el.classList.remove('dragOver'));
@@ -164,6 +163,21 @@ export function bindControls() {
     state.targetZoom = clamp(state.targetZoom * factor, ZOOM_MIN, ZOOM_MAX);
   }, { passive: false });
 
+  // Click izquierdo sobre el mundo: ataca si hay un lobo/ciervo/conejo al
+  // alcance (mismo criterio que la barra espaciadora), y si no interactúa
+  // con lo más cercano (mismo criterio que la tecla "E", ver
+  // findNearestInteractable en player.js) — no lo que esté bajo el cursor
+  // puntualmente, así no hay que mantener un segundo sistema de detección
+  // de "a qué le apunta el mouse" en paralelo al que ya usan "E"/Espacio.
+  // hasAttackTarget() chequea el rango SIN atacar todavía, porque tryAttack
+  // siempre gasta cooldown y suena aunque no haya nada cerca — no queremos
+  // que cada click de recolección normal también intente atacar al aire.
+  canvas.addEventListener('click', e => {
+    if (!state.running || state.gameOver || state.paused) return;
+    if (hasAttackTarget()) tryAttack();
+    else tryInteract();
+  });
+
   const hotbarEl = document.getElementById('hotbarSlots');
   const invGrid = document.getElementById('invGrid2');
   bindDragSource(hotbarEl, 'hotbar');
@@ -190,8 +204,27 @@ export function bindControls() {
   window.addEventListener('pointerup', e => {
     if (!dragState) return;
     if (dragState.moved) {
-      resolveDrop(document.elementFromPoint(e.clientX, e.clientY));
-      suppressNextClick = true;
+      const dropTarget = document.elementFromPoint(e.clientX, e.clientY);
+      const dropInfo = slotInfoFromElement(dropTarget);
+      // Si terminó soltando sobre la MISMA casilla de la que arrancó, no fue
+      // un arrastre de verdad: fue un click con la mano un poco temblorosa
+      // (muy común en trackpad) que pasó el DRAG_THRESHOLD de ida y volvió.
+      const droppedOnOrigin = dropInfo &&
+        dropInfo.container === dragState.origin &&
+        dropInfo.slotIndex === dragState.slotIndex;
+      if (droppedOnOrigin) {
+        useItem(dragState.id);
+      } else {
+        resolveDrop(dropTarget);
+      }
+    } else {
+      // No hubo movimiento en absoluto: fue un click liso y llano. Se
+      // resuelve ACÁ directamente (no se depende del evento 'click' nativo
+      // del navegador después de un pointerdown/pointerup) para no tener que
+      // coordinar dos mecanismos de eventos distintos — esa coordinación
+      // (con un flag "suprimir el próximo click") era una fuente extra de
+      // bugs sutiles entre navegadores.
+      useItem(dragState.id);
     }
     clearDragVisuals();
     dragState = null;
@@ -202,13 +235,8 @@ export function bindControls() {
     dragState = null;
   });
 
-  hotbarEl.addEventListener('click', e => {
-    if (suppressNextClick) { suppressNextClick = false; return; }
-    if (!state.running || state.gameOver || state.paused) return;
-    const slot = e.target.closest('.hotSlot[data-slot-index]');
-    if (!slot || !slot.dataset.itemId) return;
-    useItem(slot.dataset.itemId);
-  });
+  // "Usar" (equipar/comer) ya se resuelve directamente en el pointerup de
+  // arriba, así que acá no hace falta un listener de 'click' aparte.
 
   // Click derecho: tira el ítem al suelo en la posición del jugador (mismo
   // dropItem que usa arrastrar-y-soltar afuera de los paneles, ver
@@ -224,14 +252,6 @@ export function bindControls() {
   });
 
   document.getElementById('invToggleBtn').addEventListener('click', () => toggleInventory());
-
-  invGrid.addEventListener('click', e => {
-    if (suppressNextClick) { suppressNextClick = false; return; }
-    if (!state.running || state.gameOver || state.paused) return;
-    const slot = e.target.closest('.invSlot2.filled');
-    if (!slot || !slot.dataset.itemId) return;
-    useItem(slot.dataset.itemId);
-  });
 
   // Click derecho en el inventario: tira SOLO ese stack puntual (mismo
   // criterio que arrastrarlo afuera del panel, ver dataset.qty en ui.js).

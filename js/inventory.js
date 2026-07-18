@@ -166,7 +166,7 @@ export function harvestCorpse(c) {
     if (hide > 0) addItem('hide', hide);
     c.stage = 'bones';
     state.player.actionAnim = ACTION_SWING_DURATION;
-    SoundFX.pickup('rustle');
+    SoundFX.skinning();
     pushLog(`Desollaste ${c.kind === 'wolf' ? 'el lobo' : 'el ciervo'} (+${meat} carne, +${hide} piel)`);
   } else {
     if (invTotal() >= capFor()) {
@@ -177,7 +177,7 @@ export function harvestCorpse(c) {
     const bone = Math.min(rollYield(yields.bone), capFor() - invTotal());
     addItem('bone', bone);
     state.player.actionAnim = ACTION_SWING_DURATION;
-    SoundFX.pickup('rock');
+    SoundFX.pickup('bone');
     pushLog(`Juntaste huesos (+${bone})`);
     removeEntity('corpses', c);
   }
@@ -219,7 +219,7 @@ export function tryCookMeat() {
   removeItem('raw_meat', 1);
   addItem('cooked_meat', 1);
   state.player.actionAnim = ACTION_SWING_DURATION;
-  SoundFX.craftOk();
+  SoundFX.cookMeat();
   pushLog('Cocinaste carne (+1 carne cocida)');
 }
 
@@ -248,7 +248,7 @@ export function dropItem(id, qty) {
   // rompe del todo.
   if (state.player.equippedTool === id && !hasItem(id)) state.player.equippedTool = null;
   spawnGroundItem(state.player.x, state.player.y, id, amount, durability);
-  SoundFX.pickup('rustle');
+  SoundFX.drop();
   pushLog(`Tiraste ${ITEMS[id].label.toLowerCase()} al suelo`);
 }
 
