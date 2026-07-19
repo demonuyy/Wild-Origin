@@ -576,7 +576,7 @@ export function render() {
   for (const w of state.wolves) if (inView(w)) drawables.push({ y: w.y, type: 6, ref: w });
   for (const r of state.rabbits) if (inView(r)) drawables.push({ y: r.y, type: 11, ref: r });
   for (const b of state.bears) if (inView(b)) drawables.push({ y: b.y, type: 12, ref: b });
-  for (const g of state.groundItems) if (inView(g)) drawables.push({ y: g.y, type: 12, ref: g });
+  for (const g of state.groundItems) if (inView(g)) drawables.push({ y: g.y, type: 13, ref: g });
   drawables.push({ y: state.player.y, type: 7, ref: null });
   drawables.sort((a, b) => a.y - b.y);
   for (const d of drawables) {
@@ -594,7 +594,7 @@ export function render() {
       case 10: drawCorpse(d.ref, cam, ctx); break;
       case 11: drawRabbit(d.ref, cam, ctx); break;
       case 12: drawBear(d.ref, cam, ctx); break;
-      case 12: drawGroundItem(d.ref, cam, ctx); break;
+      case 13: drawGroundItem(d.ref, cam, ctx); break;
     }
   }
 

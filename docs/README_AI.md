@@ -162,6 +162,54 @@ casillas, cada una `null` o un id de `ITEMS` que el jugador YA posee.
 
 ---
 
+## Durabilidad de herramientas
+
+Lanza/hacha/pico/antorcha tienen `durability` en `ITEMS` (config.js); la
+mochila no (es pasiva, no se gasta con nada). Cuando un ítem tiene
+`durability`, `addItem()` le crea un slot con ese campo al máximo apenas se
+craftea. `damageTool(id, amount)` (config.js) es el único lugar que la
+descuenta: si llega a 0, saca el ítem del inventario entero y lo desequipa
+si estaba puesto. `repairTool(id)` la restaura al máximo (usado por
+`tryRepairTool` en crafting.js, que cobra la mitad del costo original).
+
+Ojo con el TIPO de desgaste: lanza/hacha/pico se gastan por USO (un golpe
+que conecta, `damageTool(id, 1)`); la antorcha se gasta por TIEMPO equipada
+(`damageTool('torch', dt)` en el loop de `updatePlayer`, player.js) — no por
+golpe. Si se agrega una herramienta nueva con durabilidad, definir cuál de
+los dos criterios le corresponde.
+
+## Cadáveres y caza
+
+Matar un lobo/ciervo/conejo (`hitDeer`/`hitRabbit` en animals.js,
+lógica de lobo en enemies.js) genera un cadáver en `state.corpses`
+(`spawnCorpse`, world.js) con `kind` y `stage: 'fresh'`. `harvestCorpse`
+(inventory.js) es el único lugar que sabe qué da cada uno
+(`CORPSE_YIELD`): lobo/ciervo tienen DOS etapas (desollar da carne+piel y
+pasa a `stage: 'bones'`; juntar huesos recién ahí saca el cadáver del
+mundo), el conejo es de una sola etapa (se recolecta entero, sin piel ni
+huesos, por ser chico). No requiere ninguna herramienta equipada, a
+diferencia de talar/minar.
+
+`state.corpses` NO está atado al sistema de chunks (no se descarga/recarga
+al alejarse y volver): vive como una lista simple con un tope
+(`MAX_CORPSES`) y se guarda directo en el save, igual que `state.groundItems`
+más abajo.
+
+## Tirar y recoger ítems del suelo
+
+`dropItem(id, qty)` (inventory.js) saca del inventario y crea una entrada en
+`state.groundItems` (`spawnGroundItem`, world.js); `pickUpGroundItem`
+hace lo inverso. Se dispara arrastrando un ítem (hotbar o inventario) y
+soltándolo AFUERA de ambos paneles (`resolveDrop`/`isOutsidePanels` en
+input.js), o con click derecho sobre la casilla. La durabilidad de una
+herramienta viaja con el ítem tirado (`getDurability`/`setDurability` en
+config.js) para que tirarla y recogerla no la "repare" gratis.
+
+Mismo criterio que los cadáveres: `state.groundItems` no está atado a
+chunks, tiene un tope (`MAX_GROUND_ITEMS`) y se guarda directo en el save.
+
+---
+
 ## Audio (samples reales + respaldo sintetizado)
 
 `js/audio.js`: `SAMPLE_FILES` mapea una categoría (ej. `craft`, `rabbitHurt`)
@@ -184,9 +232,11 @@ en su propio método en vez de seguir reusando el genérico).
 
 ## Tests
 
-`tests/` tiene tests unitarios de crafting.js, inventory.js y save.js
-(recolección de recursos, costos de crafteo, guardado/carga). Se corren con
-`npm test` (o `node --test "tests/*.test.js"`), no necesitan navegador.
+`tests/` tiene tests unitarios de crafting.js, inventory.js, save.js, la
+hotbar/inventario real (hotbar.test.js), durabilidad (durability.test.js),
+conejos/caza/cocinar (rabbits.test.js) y generación de mundo/bioma nieve/oso
+(world.test.js). Se corren con `npm test` (o `node --test
+"tests/*.test.js"`), no necesitan navegador.
 
 Si se agrega o cambia una receta, un costo, o una regla de recolección,
 conviene actualizar/agregar el test correspondiente en el mismo cambio.

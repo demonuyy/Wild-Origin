@@ -54,6 +54,16 @@
 
 ✅ Regeneración de bayas en arbustos y duración limitada de fogatas
 
+✅ Inventario real por ítems (`player.inventory`, no contadores sueltos) + hotbar real asignable (drag & drop)
+
+✅ Durabilidad de herramientas (lanza/hacha/pico/antorcha se gastan y se pueden reparar)
+
+✅ Cadáveres: desollar lobo/ciervo/conejo (carne + piel + huesos), caza de conejos
+
+✅ Antorcha (ilumina de noche, se gasta por tiempo equipada, no por golpe)
+
+✅ Tirar y recoger ítems del suelo (click derecho para tirar, drag afuera del panel, "E"/interactuar para recoger)
+
 ---
 
 ## v0.3
@@ -72,13 +82,13 @@
 
 ## v0.4
 
-⬜ Bioma nieve
+✅ Bioma nieve
 
 ⬜ Hierro
 
 ⬜ Carbón
 
-⬜ Oso
+✅ Oso
 
 ⬜ Arco
 
