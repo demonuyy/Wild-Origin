@@ -218,6 +218,9 @@ export function drawDeer(d, cam, ctx) {
   const breathe = Math.sin(state.elapsed * 2.2 + d.x * 0.3) * (grazing ? 0.6 : 0.3);
   const headDip = grazing ? (Math.sin(state.elapsed * 0.8 + d.x * 0.2) * 0.5 + 0.5) * 2.6 : 0;
   const tailWag = Math.sin(state.elapsed * (moving ? 9 : 3) + d.y * 0.2) * (moving ? 1 : 0.5);
+  // Tic de orejas cuando está parado del todo (ni caminando ni pastando):
+  // mismo criterio que ya usa el lobo, para que no se vea congelado.
+  const earTwitch = (moving || grazing) ? 0 : Math.sin(state.elapsed * 1.7 + d.y * 0.2) * 0.12;
 
   // sx/sy quedan como origen local; ctx.scale(dir,1) espeja todo el dibujo
   // cuando el ciervo se mueve hacia la izquierda, así deja de mirar siempre
@@ -269,9 +272,13 @@ export function drawDeer(d, cam, ctx) {
   ctx.fill();
   // Orejas.
   ctx.fillStyle = pal.dark;
+  ctx.save();
+  ctx.translate(headX + 1, headY - 4);
+  ctx.rotate(earTwitch);
   ctx.beginPath();
-  ctx.ellipse(headX + 1, headY - 4, 1.8, 3, -0.3, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, 1.8, 3, -0.3, 0, Math.PI * 2);
   ctx.fill();
+  ctx.restore();
   ctx.fillStyle = pal.rump;
   ctx.beginPath();
   ctx.ellipse(-2, bodyY + 2, 3.5, 2.2, 0, 0, Math.PI * 2);
@@ -310,6 +317,11 @@ export function drawRabbit(r, cam, ctx) {
   // rebota un poco al moverse (más marcado huyendo que deambulando).
   const hop = moving ? Math.abs(Math.sin(state.elapsed * (r.state === 'flee' ? 14 : 7) + r.x * 0.1)) * (r.state === 'flee' ? 3 : 1.6) : 0;
   const breathe = Math.sin(state.elapsed * 3 + r.x * 0.3) * 0.3;
+  // Orejas atentas (se mueven solas cuando está parado) y nariz que tiembla
+  // todo el tiempo, un poco más rápido si está huyendo: son los dos gestos
+  // que más "vida" le dan a un animal tan chico y con tan pocos rasgos.
+  const earTwitch = moving ? 0 : Math.sin(state.elapsed * 2.1 + r.y * 0.2) * 0.18;
+  const noseTwitch = Math.sin(state.elapsed * (moving ? 16 : 9) + r.x * 0.4) * 0.35 + 0.35;
 
   ctx.save();
   ctx.translate(sx, sy - hop);
@@ -339,7 +351,7 @@ export function drawRabbit(r, cam, ctx) {
   [[-0.4, -1], [1, -0.6]].forEach(([ox, rot]) => {
     ctx.save();
     ctx.translate(headX + ox, headY - 2);
-    ctx.rotate(rot * 0.25);
+    ctx.rotate(rot * 0.25 + earTwitch);
     ctx.beginPath();
     ctx.ellipse(0, -3.2, 1, 3.4, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -352,6 +364,12 @@ export function drawRabbit(r, cam, ctx) {
   ctx.fillStyle = 'rgba(20,15,10,0.8)';
   ctx.beginPath();
   ctx.arc(headX + 1.6, headY - 0.5, 0.8, 0, Math.PI * 2);
+  ctx.fill();
+  // Nariz: un puntito rosado que tiembla todo el tiempo, más rápido si
+  // corre. Chiquito a propósito (es un conejo, no tiene hocico marcado).
+  ctx.fillStyle = 'rgba(210,140,140,0.85)';
+  ctx.beginPath();
+  ctx.arc(headX + 3, headY + 0.3, 0.5 + noseTwitch * 0.25, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
   // Igual criterio que el ciervo: la barra de vida solo aparece si ya

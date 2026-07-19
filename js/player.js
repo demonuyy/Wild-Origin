@@ -2,7 +2,7 @@ import { state, clamp, dist, DAY_LENGTH, invTotal, capFor, isNightPhase, hasItem
 import { pushLog, showHint, updateEquipUI, updateHUD, showInteractPrompt, hideInteractPrompt, isInventoryOpen } from './ui.js';
 import { SoundFX } from './audio.js';
 import { collectTreeResource, collectRockResource, collectBushResource, consumeBerry, collectStick, collectStone, harvestCorpse, tryCookMeat, pickUpGroundItem } from './inventory.js';
-import { removeEntity, spawnBlood, spawnRipple, isInWater, spawnCorpse } from './world.js';
+import { removeEntity, spawnBlood, spawnRipple, isInWater, spawnCorpse, isSnowBiome } from './world.js';
 import { hitDeer, hitRabbit } from './animals.js';
 
 let footstepTimer = 0;
@@ -30,6 +30,17 @@ const THIRST_DECAY_RATE = 0.55;
 // Mientras se corre (sprint con shift) hambre y sed bajan más rápido que
 // caminando o parado; NO aplica en trySleep() (dormir no es correr).
 const SPRINT_DECAY_MULT = 1.6;
+// Frío: baja rápido (100→0 en ~17s parado en la nieve sin abrigo) pero se
+// recupera todavía más rápido apenas hay una fuente de calor cerca o se
+// sale del bioma (100→0... digo 0→100 en ~9s), para que no se sienta como
+// un castigo permanente sino como "corré a una fogata ya".
+const COLD_DRAIN_RATE = 6;
+const WARMTH_RECOVER_RATE = 11;
+// Radios de "fuente de calor" (mismo criterio que ya usa el fuego para
+// espantar lobos en enemies.js, un poco más generoso acá porque calentarse
+// a la distancia tiene más sentido que espantar animales).
+const CAMPFIRE_WARMTH_R = 170;
+const SHELTER_WARMTH_R = 190;
 
 export function resetPlayer() {
   state.player.x = 0;
@@ -38,6 +49,7 @@ export function resetPlayer() {
   state.player.hunger = 100;
   state.player.thirst = 100;
   state.player.stamina = 100;
+  state.player.warmth = 100;
   state.player.staminaCooldown = 0;
   state.player.staminaRegenDelay = 0;
   state.player.inventory = [];
@@ -150,6 +162,10 @@ function findNearestInteractable() {
     }
   }
   for (const p of state.ponds) {
+    // Congelada: es hielo, no se puede beber de ahí (ver isInWater en
+    // world.js, mismo criterio de "está en el bioma de nieve" que ya usa
+    // para no mojar/frenar al pisarla).
+    if (isSnowBiome(p.x, p.y)) continue;
     const dx = (state.player.x - p.x) / p.rw;
     const dy = (state.player.y - p.y) / p.rh;
     if (dx * dx + dy * dy < 2.2) {
@@ -226,10 +242,22 @@ export function trySleep() {
   state.player.thirst = clamp(state.player.thirst - skip * THIRST_DECAY_RATE, 0, 100);
   state.player.health = 100;
   state.player.stamina = 100;
+  state.player.warmth = 100;
   state.player.staminaCooldown = 0;
   state.player.staminaRegenDelay = 0;
   SoundFX.sleep();
   pushLog('Dormiste a salvo hasta el amanecer');
+}
+
+// Fuente de calor cerca del jugador: fogata prendida, refugio, o antorcha
+// en mano (una antorcha, aunque sea de noche en pasto normal, calienta:
+// tiene sentido que sea portátil). No depende de estar en el bioma de
+// nieve — eso lo decide quien llama, acá solo importa si HAY calor cerca.
+function isPlayerWarm() {
+  if (state.player.equippedTool === 'torch') return true;
+  const p = state.player;
+  return state.campfires.some(f => dist(f.x, f.y, p.x, p.y) < CAMPFIRE_WARMTH_R) ||
+    state.shelters.some(s => dist(s.x, s.y, p.x, p.y) < SHELTER_WARMTH_R);
 }
 
 // Verdadero si hay un lobo/ciervo/conejo lo bastante cerca como para que un
@@ -244,6 +272,7 @@ export function hasAttackTarget() {
   for (const w of state.wolves) if (dist(state.player.x, state.player.y, w.x, w.y) < range) return true;
   for (const d of state.deer) if (dist(state.player.x, state.player.y, d.x, d.y) < range) return true;
   for (const r of state.rabbits) if (dist(state.player.x, state.player.y, r.x, r.y) < range) return true;
+  for (const b of state.bears) if (dist(state.player.x, state.player.y, b.x, b.y) < range) return true;
   return false;
 }
 
@@ -283,6 +312,23 @@ export function tryAttack() {
     if (dist(state.player.x, state.player.y, r.x, r.y) < range) {
       hitRabbit(r, damage);
       hitSomething = true;
+    }
+  }
+  for (const b of state.bears) {
+    if (dist(state.player.x, state.player.y, b.x, b.y) < range) {
+      b.health -= damage;
+      b.knockX = b.x - state.player.x;
+      b.knockY = b.y - state.player.y;
+      hitSomething = true;
+      SoundFX.wolfHit(b.x, b.y);
+      spawnBlood(b.x, b.y, 3);
+      if (b.health <= 0) {
+        removeEntity('bears', b);
+        spawnCorpse(b.x, b.y, 'bear', b.variant);
+        SoundFX.wolfDeath(b.x, b.y);
+        spawnBlood(b.x, b.y, 8);
+        pushLog('¡El oso cayó!');
+      }
     }
   }
   if (hitSomething) {
@@ -365,11 +411,20 @@ export function updatePlayer(dt) {
   const decayMult = sprint ? SPRINT_DECAY_MULT : 1;
   player.hunger = clamp(player.hunger - HUNGER_DECAY_RATE * decayMult * dt, 0, 100);
   player.thirst = clamp(player.thirst - THIRST_DECAY_RATE * decayMult * dt, 0, 100);
-  if (player.hunger <= 0 || player.thirst <= 0) {
+  // Frío: solo baja adentro del bioma de nieve y sin una fuente de calor
+  // cerca (ver isPlayerWarm); en cualquier otro caso se recupera solo, sin
+  // depender de comer/beber/dormir como hambre y sed.
+  if (isSnowBiome(player.x, player.y) && !isPlayerWarm()) {
+    player.warmth = clamp(player.warmth - COLD_DRAIN_RATE * dt, 0, 100);
+  } else {
+    player.warmth = clamp(player.warmth + WARMTH_RECOVER_RATE * dt, 0, 100);
+  }
+  if (player.hunger <= 0 || player.thirst <= 0 || player.warmth <= 0) {
     player.health = clamp(player.health - 3.2 * dt, 0, 100);
     // Mismo sonido de dolor que usa el mordisco del lobo (enemies.js), acá
-    // repetido cada ~1.8s mientras el hambre o la sed sigan en 0, para que
-    // se note que la salud se está yendo por inanición y no solo por el HUD.
+    // repetido cada ~1.8s mientras hambre/sed/frío sigan en 0, para que se
+    // note que la salud se está yendo por inanición/congelamiento y no solo
+    // por el HUD.
     starveHurtTimer -= dt;
     if (starveHurtTimer <= 0) {
       SoundFX.playerHurt();
@@ -377,7 +432,7 @@ export function updatePlayer(dt) {
     }
   } else {
     starveHurtTimer = 0;
-    if (player.health < 100 && player.hunger > 55 && player.thirst > 55 && !isNightPhase((state.elapsed % DAY_LENGTH) / DAY_LENGTH)) {
+    if (player.health < 100 && player.hunger > 55 && player.thirst > 55 && player.warmth > 55 && !isNightPhase((state.elapsed % DAY_LENGTH) / DAY_LENGTH)) {
       player.health = clamp(player.health + 1.4 * dt, 0, 100);
     }
   }

@@ -393,6 +393,7 @@ export function updateHUD() {
   document.getElementById('bar-hunger').style.width = clamp(state.player.hunger, 0, 100) + '%';
   document.getElementById('bar-thirst').style.width = clamp(state.player.thirst, 0, 100) + '%';
   document.getElementById('bar-stam').style.width = clamp(state.player.stamina, 0, 100) + '%';
+  document.getElementById('bar-warmth').style.width = clamp(state.player.warmth, 0, 100) + '%';
   document.getElementById('dayCount').textContent = 'Día ' + state.dayCounter;
   const phase = (state.elapsed % DAY_LENGTH) / DAY_LENGTH;
   let label = '☀ Día';

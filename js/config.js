@@ -120,6 +120,12 @@ export const state = {
   // hitRabbit/drawRabbit) y world.js (generación + cadáver de una sola
   // etapa, sin piel/huesos).
   rabbits: [],
+  // Predador grande y peligroso, exclusivo del bioma de nieve: mismo
+  // esqueleto que el lobo (persigue/pierde de vista/deambula) pero
+  // solitario, más lento, y bastante más resistente/dañino. Ver enemies.js
+  // (updateBears/drawBear) y world.js (generación solo en isSnowBiome,
+  // cadáver de dos etapas como el lobo/ciervo).
+  bears: [],
   grassDecor: [],
   // Manchas de sangre en el suelo (jugador o animal golpeado). No están
   // atadas a chunks como grassDecor: son efímeras (se van desvaneciendo
@@ -160,6 +166,12 @@ export const state = {
     hunger: 100,
     thirst: 100,
     stamina: 100,
+    // 100 = calentito, 0 = congelándose (y ahí empieza a perder vida, igual
+    // que hambre/sed en 0). Solo baja estando DENTRO del bioma de nieve y
+    // lejos de una fuente de calor (fogata, refugio, o antorcha en mano);
+    // en cualquier otro lado se recupera solo. Ver updatePlayer en
+    // player.js.
+    warmth: 100,
     // Cooldown (en segundos) que arranca al llegar a 0 de energía: mientras
     // esté activo, no se puede volver a correr aunque la energía ya se haya
     // recuperado. Ver STAMINA_COOLDOWN en player.js.

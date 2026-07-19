@@ -5,7 +5,7 @@ import { state, ctx, canvas, DAY_LENGTH, ZOOM_MIN, ZOOM_DEFAULT, clamp, hasItem,
 import { SoundFX } from './audio.js';
 import { drawGround, drawGrassDecor, drawBloodDecals, drawPonds, drawRippleDecals, drawTree, drawRock, drawBush, drawStick, drawStone, drawCorpse, drawGroundItem, snowFactor } from './world.js';
 import { drawDeer, drawRabbit } from './animals.js';
-import { drawWolf } from './enemies.js';
+import { drawWolf, drawBear } from './enemies.js';
 import { drawCampfire, drawShelter } from './building.js';
 
 // El minimapa es infinito como el mundo: no hay un WORLD_W/H para escalar,
@@ -47,6 +47,8 @@ function renderMinimap(cam, viewW, viewH) {
   for (const f of state.campfires) { const [mx, my] = toMap(f.x, f.y); mctx.beginPath(); mctx.arc(mx, my, 1.8, 0, Math.PI * 2); mctx.fill(); }
   mctx.fillStyle = '#c0392b';
   for (const w of state.wolves) { const [mx, my] = toMap(w.x, w.y); mctx.beginPath(); mctx.arc(mx, my, 1.6, 0, Math.PI * 2); mctx.fill(); }
+  mctx.fillStyle = '#7a2f1a';
+  for (const b of state.bears) { const [mx, my] = toMap(b.x, b.y); mctx.beginPath(); mctx.arc(mx, my, 2.4, 0, Math.PI * 2); mctx.fill(); }
 
   mctx.strokeStyle = 'rgba(203,216,195,0.45)';
   mctx.lineWidth = 1;
@@ -573,6 +575,7 @@ export function render() {
   for (const d of state.deer) if (inView(d)) drawables.push({ y: d.y, type: 5, ref: d });
   for (const w of state.wolves) if (inView(w)) drawables.push({ y: w.y, type: 6, ref: w });
   for (const r of state.rabbits) if (inView(r)) drawables.push({ y: r.y, type: 11, ref: r });
+  for (const b of state.bears) if (inView(b)) drawables.push({ y: b.y, type: 12, ref: b });
   for (const g of state.groundItems) if (inView(g)) drawables.push({ y: g.y, type: 12, ref: g });
   drawables.push({ y: state.player.y, type: 7, ref: null });
   drawables.sort((a, b) => a.y - b.y);
@@ -590,6 +593,7 @@ export function render() {
       case 9: drawStone(d.ref, cam, ctx); break;
       case 10: drawCorpse(d.ref, cam, ctx); break;
       case 11: drawRabbit(d.ref, cam, ctx); break;
+      case 12: drawBear(d.ref, cam, ctx); break;
       case 12: drawGroundItem(d.ref, cam, ctx); break;
     }
   }

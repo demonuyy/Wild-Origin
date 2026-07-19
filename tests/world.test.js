@@ -53,3 +53,20 @@ test('ningún arbusto/ciervo/conejo generado cae dentro del bioma de nieve', () 
   for (const d of state.deer) assert.equal(isSnowBiome(d.x, d.y), false, `ciervo en (${d.x},${d.y})`);
   for (const r of state.rabbits) assert.equal(isSnowBiome(r.x, r.y), false, `conejo en (${r.x},${r.y})`);
 });
+
+test('el oso aparece y solo dentro del bioma de nieve', () => {
+  resetState();
+  generateWorld();
+  let found = false;
+  for (let x = -15000; x <= 15000 && !found; x += 1200) {
+    for (let y = -15000; y <= 15000 && !found; y += 1200) {
+      if (!isSnowBiome(x, y)) continue;
+      state.player.x = x;
+      state.player.y = y;
+      updateChunks(1400, 1000);
+      if (state.bears.length > 0) found = true;
+    }
+  }
+  assert.equal(found, true, 'recorriendo bastante bioma de nieve debería aparecer al menos un oso');
+  for (const b of state.bears) assert.equal(isSnowBiome(b.x, b.y), true, `oso fuera de la nieve en (${b.x},${b.y})`);
+});

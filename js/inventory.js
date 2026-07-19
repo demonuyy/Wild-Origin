@@ -134,6 +134,9 @@ export function collectBushResource(b) {
 const CORPSE_YIELD = {
   wolf: { meat: [2, 3], hide: [1, 2], bone: [1, 2] },
   deer: { meat: [3, 5], hide: [1, 2], bone: [2, 3] },
+  // El oso es el más grande de los tres: da bastante más de todo (es un
+  // encuentro raro y peligroso, tiene sentido que valga la pena de verdad).
+  bear: { meat: [5, 8], hide: [2, 3], bone: [3, 4] },
   // El conejo no tiene etapa de piel/huesos (ver harvestCorpse): solo se usa
   // `meat` acá.
   rabbit: { meat: [1, 2] }
@@ -167,7 +170,8 @@ export function harvestCorpse(c) {
     c.stage = 'bones';
     state.player.actionAnim = ACTION_SWING_DURATION;
     SoundFX.skinning();
-    pushLog(`Desollaste ${c.kind === 'wolf' ? 'el lobo' : 'el ciervo'} (+${meat} carne, +${hide} piel)`);
+    const kindLabel = c.kind === 'wolf' ? 'el lobo' : (c.kind === 'bear' ? 'el oso' : 'el ciervo');
+    pushLog(`Desollaste ${kindLabel} (+${meat} carne, +${hide} piel)`);
   } else {
     if (invTotal() >= capFor()) {
       SoundFX.craftFail();

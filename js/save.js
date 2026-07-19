@@ -123,6 +123,7 @@ export function saveGame(slot = DEFAULT_SLOT) {
       wolves: state.wolves,
       deer: state.deer,
       rabbits: state.rabbits,
+      bears: state.bears,
       grassDecor: state.grassDecor,
       sticks: state.sticks,
       stones: state.stones,
@@ -180,6 +181,7 @@ function applySaveData(data) {
   // Ausente en partidas guardadas antes de este sistema: [] por defecto,
   // igual que corpses más abajo.
   state.rabbits = data.world?.rabbits || [];
+  state.bears = data.world?.bears || [];
   state.grassDecor = data.world?.grassDecor || [];
   state.sticks = data.world?.sticks || [];
   state.stones = data.world?.stones || [];

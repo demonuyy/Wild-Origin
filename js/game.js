@@ -2,7 +2,7 @@ import { state, canvas, DAY_LENGTH, clamp } from './config.js';
 import { SoundFX } from './audio.js';
 import { generateWorld, updateChunks, restoreChunksFromSave, updateBloodDecals, updateRippleDecals } from './world.js';
 import { updateDeer, updateRabbits } from './animals.js';
-import { updateWolves } from './enemies.js';
+import { updateWolves, updateBears } from './enemies.js';
 import { resetPlayer, updatePlayer, updateInteractionPrompt } from './player.js';
 import { pushLog, updateEquipUI, updateHUD, endGame, openPause, closePause, goToMainMenu, wireVolumeControls, showHint, openSettings, closeSettings } from './ui.js';
 import { saveGame, loadGame, hasSavedGame, tickAutosave, resetAutosaveTimer } from './save.js';
@@ -85,6 +85,7 @@ function update(dt) {
   updateDeer(dt);
   updateRabbits(dt);
   updateWolves(dt);
+  updateBears(dt);
   updateBloodDecals(dt);
   updateRippleDecals(dt);
 

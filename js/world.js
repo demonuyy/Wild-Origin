@@ -103,6 +103,9 @@ const DEER_VARIANTS = 3;
 // WOLF_VARIANTS/DEER_VARIANTS de arriba: un solo lugar por módulo para no
 // crear un import circular).
 const RABBIT_VARIANTS = 2;
+// Paletas del oso: ver BEAR_PALETTES en enemies.js (mismo criterio que
+// WOLF_VARIANTS de arriba).
+const BEAR_VARIANTS = 2;
 
 // Cantidad de siluetas distintas por tipo de entidad (independiente del
 // color): TREE_SHAPES en drawTree, ROCK_SHAPES en drawRock. Se sortea junto
@@ -132,6 +135,7 @@ export function generateWorld() {
   state.wolves = [];
   state.deer = [];
   state.rabbits = [];
+  state.bears = [];
   state.grassDecor = [];
   state.bloodDecals = [];
   state.rippleDecals = [];
@@ -155,7 +159,7 @@ export function restoreChunksFromSave() {
   state.chunkStore = {};
   const lists = {
     trees: state.trees, rocks: state.rocks, bushes: state.bushes, ponds: state.ponds,
-    wolves: state.wolves, deer: state.deer, rabbits: state.rabbits, grassDecor: state.grassDecor,
+    wolves: state.wolves, deer: state.deer, rabbits: state.rabbits, bears: state.bears, grassDecor: state.grassDecor,
     sticks: state.sticks, stones: state.stones
   };
   for (const [name, arr] of Object.entries(lists)) {
@@ -163,7 +167,7 @@ export function restoreChunksFromSave() {
       const key = obj.chunkKey;
       if (!key) continue;
       if (!state.chunkStore[key]) {
-        state.chunkStore[key] = { trees: [], rocks: [], bushes: [], ponds: [], wolves: [], deer: [], rabbits: [], grassDecor: [], sticks: [], stones: [] };
+        state.chunkStore[key] = { trees: [], rocks: [], bushes: [], ponds: [], wolves: [], deer: [], rabbits: [], bears: [], grassDecor: [], sticks: [], stones: [] };
       }
       state.chunkStore[key][name].push(obj);
     }
@@ -178,7 +182,7 @@ function generateChunk(cx, cy) {
   const ox = cx * CHUNK_SIZE, oy = cy * CHUNK_SIZE;
   const nearSpawn = (x, y) => dist(x, y, 0, 0) < 260;
 
-  const trees = [], rocks = [], bushes = [], ponds = [], wolves = [], deer = [], rabbits = [], grassDecor = [], sticks = [], stones = [];
+  const trees = [], rocks = [], bushes = [], ponds = [], wolves = [], deer = [], rabbits = [], bears = [], grassDecor = [], sticks = [], stones = [];
 
   const tryPlace = (list, attempts, noiseFn, factory) => {
     for (let i = 0; i < attempts; i++) {
@@ -198,14 +202,27 @@ function generateChunk(cx, cy) {
   // OJO: la fórmula de densidad de abajo acepta en promedio ~45% de los intentos
   // (no un 5-10% como parecería a simple vista), así que estos números ya están
   // calibrados para dar una densidad similar a la del mapa original por chunk.
+  // Bajados un poco (18→14 / 9→7) respecto de antes: como ahora cada árbol/
+  // roca ocupa mucho más lugar (ver `size` más abajo) y no hay ningún
+  // sistema de separación mínima entre objetos, mantener la MISMA cantidad
+  // que antes amontonaba demasiado follaje/piedra superpuesta.
   // `variant` elige la paleta de color (no aplica a rocas, que son todas del
   // mismo color) y `shape` elige la silueta, en drawTree/drawRock/drawBush
   // (ver TREE_PALETTES/ROCK_PALETTE/BUSH_PALETTES y TREE_SHAPES/ROCK_SHAPES
   // más abajo). Se deciden acá, una sola vez por entidad y a partir del rnd
   // determinístico del chunk, así que cada árbol/roca/arbusto se ve siempre
   // igual al recargar la zona.
-  tryPlace(trees, 18, forestNoise, (x, y) => ({ x, y, hits: 3, maxHits: 3, size: crand(0.85, 1.3), sway: crand(0, Math.PI * 2), variant: Math.floor(rnd() * TREE_VARIANTS), shape: Math.floor(rnd() * TREE_SHAPES) }));
-  tryPlace(rocks, 9, rockNoise, (x, y) => ({ x, y, hits: 4, maxHits: 4, size: crand(0.8, 1.25), shape: Math.floor(rnd() * ROCK_SHAPES) }));
+  // En el bioma de nieve solo crecen coníferas (shape=1, la silueta de
+  // pino) con su verde oscuro característico (variant=0): nada de las
+  // otras dos siluetas/colores (álamo, otoñal), que no pegan con un bosque
+  // nevado. Fuera del bioma sigue habiendo de las tres formas y colores.
+  // Tamaño bien más grande que antes (antes crand(0.85,1.3) / crand(0.8,1.25)):
+  // ahora un árbol/roca promedio ronda el doble de alto/ancho, para que se
+  // sientan como el elemento dominante del paisaje en vez de decoración chica.
+  tryPlace(trees, 14, forestNoise, (x, y) => (isSnowBiome(x, y)
+    ? { x, y, hits: 3, maxHits: 3, size: crand(1.6, 2.3), sway: crand(0, Math.PI * 2), variant: 0, shape: 1 }
+    : { x, y, hits: 3, maxHits: 3, size: crand(1.6, 2.3), sway: crand(0, Math.PI * 2), variant: Math.floor(rnd() * TREE_VARIANTS), shape: Math.floor(rnd() * TREE_SHAPES) }));
+  tryPlace(rocks, 7, rockNoise, (x, y) => ({ x, y, hits: 4, maxHits: 4, size: crand(1.5, 2.1), shape: Math.floor(rnd() * ROCK_SHAPES) }));
   // Los arbustos con bayas no crecen en el bioma de nieve (hace demasiado
   // frío); tryPlace ya sortea (x,y) antes de llamar al factory, así que acá
   // alcanza con descartar el intento si cayó en zona nevada.
@@ -261,6 +278,16 @@ function generateChunk(cx, cy) {
       }
     }
   }
+  // Oso: solo en el bioma de nieve, y bastante más raro que el lobo (es un
+  // encuentro peligroso de verdad, no algo con lo que te cruzás todo el
+  // rato). Nada de manada como el lobo: siempre de a uno.
+  if (rnd() < 0.12) {
+    const x = ox + crand(0, CHUNK_SIZE);
+    const y = oy + crand(0, CHUNK_SIZE);
+    if (!nearSpawn(x, y) && isSnowBiome(x, y)) {
+      bears.push({ x, y, health: 90, maxHealth: 90, speed: crand(70, 90), state: 'wander', wanderTarget: null, attackCd: 0, alertR: 130, chunkKey: key, variant: Math.floor(rnd() * BEAR_VARIANTS) });
+    }
+  }
   for (let i = 0; i < 22; i++) {
     const x = ox + crand(0, CHUNK_SIZE), y = oy + crand(0, CHUNK_SIZE);
     // El pasto decorativo no se dibuja sobre nieve (quedaría un tufo verde
@@ -268,7 +295,7 @@ function generateChunk(cx, cy) {
     if (!isSnowBiome(x, y)) grassDecor.push({ x, y, s: crand(0.5, 1.3), rot: crand(0, Math.PI * 2), chunkKey: key });
   }
 
-  const data = { trees, rocks, bushes, ponds, wolves, deer, rabbits, grassDecor, sticks, stones };
+  const data = { trees, rocks, bushes, ponds, wolves, deer, rabbits, bears, grassDecor, sticks, stones };
   state.chunkStore[key] = data;
   return data;
 }
@@ -283,6 +310,7 @@ function attachChunk(key) {
   state.wolves.push(...data.wolves);
   state.deer.push(...data.deer);
   state.rabbits.push(...data.rabbits);
+  state.bears.push(...data.bears);
   state.grassDecor.push(...data.grassDecor);
   state.sticks.push(...data.sticks);
   state.stones.push(...data.stones);
@@ -297,6 +325,7 @@ function detachChunk(key) {
   state.wolves = state.wolves.filter(o => o.chunkKey !== key);
   state.deer = state.deer.filter(o => o.chunkKey !== key);
   state.rabbits = state.rabbits.filter(o => o.chunkKey !== key);
+  state.bears = state.bears.filter(o => o.chunkKey !== key);
   state.grassDecor = state.grassDecor.filter(o => o.chunkKey !== key);
   state.sticks = state.sticks.filter(o => o.chunkKey !== key);
   state.stones = state.stones.filter(o => o.chunkKey !== key);
@@ -387,10 +416,42 @@ function getSnowStamp(radius) {
 // snowFactor() aplicada como transparencia (globalAlpha) en vez de estar
 // horneada en el sello — así un mismo sello sirve para cualquier valor de
 // snowFactor entre 0 y 1.
-const SNOW_STEP = 210;
-const SNOW_R = 260;
+// SNOW_STEP/SNOW_R: cuanto más chico el radio respecto del paso, menos se
+// superponen las manchas vecinas y más barato sale pintarlas (el costo real
+// es el ÁREA de overdraw, no la cantidad de celdas) — pero necesitan seguir
+// superponiéndose lo suficiente como para no dejar huecos visibles incluso
+// con el jitter de abajo. Antes (210/260) el radio era bastante más grande
+// de lo que hacía falta para eso: cada punto de pantalla terminaba cubierto
+// por varias manchas superpuestas de más, y ESE overdraw (no la cantidad de
+// manchas en sí) era el lag notorio al entrar al bioma de nieve.
+const SNOW_STEP = 240;
+const SNOW_R = 200;
+
+// Hash determinístico (mismo truco "seno gigante" de siempre para esto):
+// nada de Math.random(), porque necesita dar EL MISMO número cada vez que
+// se pinta la misma celda (cx,cy) — si no, cada mancha titilaría de tamaño
+// y posición de un frame a otro en vez de quedar quieta.
+function cellHash(a, b) {
+  const h = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+  return h - Math.floor(h);
+}
+
+// Nieve del bioma: se pinta ENCIMA del pasto en manchas grandes y
+// superpuestas (no como una capa aparte con un borde recto) usando
+// snowFactor() en cada punto de muestreo, así el límite entre bioma nevado
+// y pasto se ve degradado en vez de una línea dura. Cada mancha es el
+// sello de arriba estampado con drawImage(), con la intensidad de
+// snowFactor() aplicada como transparencia (globalAlpha) en vez de estar
+// horneada en el sello — así un mismo sello sirve para cualquier valor de
+// snowFactor entre 0 y 1.
+// Sin el jitter/escala de acá abajo, al estar todas las manchas centradas
+// justo en la grilla y con el mismo tamaño, se notaba clarísimo el patrón
+// repetido (una fila tras otra de círculos idénticos). Cada celda corre su
+// centro un poco al azar (determinístico por celda) y varía el tamaño, así
+// se rompe la regularidad sin agregar ni un solo drawImage() más.
 function drawSnowGround(ctx, cam, viewW, viewH) {
   const stamp = getSnowStamp(SNOW_R);
+  const jitter = SNOW_STEP * 0.38;
   const snowStartCx = Math.floor(cam.x / SNOW_STEP) - 1;
   const snowEndCx = Math.floor((cam.x + viewW) / SNOW_STEP) + 1;
   const snowStartCy = Math.floor(cam.y / SNOW_STEP) - 1;
@@ -400,9 +461,13 @@ function drawSnowGround(ctx, cam, viewW, viewH) {
       const wx = cx * SNOW_STEP, wy = cy * SNOW_STEP;
       const amt = snowFactor(wx, wy);
       if (amt <= 0.03) continue;
-      const px = wx - cam.x, py = wy - cam.y;
+      const jx = (cellHash(cx, cy) - 0.5) * 2 * jitter;
+      const jy = (cellHash(cx + 91.7, cy - 13.3) - 0.5) * 2 * jitter;
+      const scale = 0.8 + cellHash(cx - 47.2, cy + 71.9) * 0.55;
+      const size = SNOW_R * 2 * scale;
+      const px = wx - cam.x + jx, py = wy - cam.y + jy;
       ctx.globalAlpha = amt;
-      ctx.drawImage(stamp, px - SNOW_R, py - SNOW_R);
+      ctx.drawImage(stamp, px - size / 2, py - size / 2, size, size);
       ctx.globalAlpha = 1;
     }
   }
@@ -436,6 +501,34 @@ export function drawGround(ctx, canvas, cam) {
       ctx.fillStyle = tone;
       ctx.beginPath();
       ctx.ellipse(px, py, 100, 56, 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Segunda capa, más fina: motas sueltas de pasto (no manchas grandes como
+  // arriba) para que de cerca el suelo no se vea tan liso. Cada mota es
+  // chiquita (radio 1-2), así que aunque haya bastantes por pantalla el
+  // costo real de pintarlas es mínimo (poca área cada una).
+  const SPECK_TILE = 74;
+  const speckTones = ['rgba(150,185,110,0.16)', 'rgba(25,45,25,0.18)', 'rgba(200,210,140,0.1)'];
+  const sStartCx = Math.floor(cam.x / SPECK_TILE) - 1;
+  const sEndCx = Math.floor((cam.x + canvas.width) / SPECK_TILE) + 1;
+  const sStartCy = Math.floor(cam.y / SPECK_TILE) - 1;
+  const sEndCy = Math.floor((cam.y + canvas.height) / SPECK_TILE) + 1;
+  for (let cx = sStartCx; cx <= sEndCx; cx++) {
+    for (let cy = sStartCy; cy <= sEndCy; cy++) {
+      const h1 = cellHash(cx, cy);
+      // Casi un tercio de las celdas se saltea del todo: si TODAS tuvieran
+      // mota, se notaría como otra grilla regular (el mismo problema que ya
+      // tuvo la nieve), y acá no hace falta cobertura completa.
+      if (h1 < 0.32) continue;
+      const h2 = cellHash(cx + 15.3, cy - 8.7);
+      const h3 = cellHash(cx - 22.1, cy + 4.4);
+      const px = cx * SPECK_TILE + h2 * SPECK_TILE - cam.x;
+      const py = cy * SPECK_TILE + h3 * SPECK_TILE - cam.y;
+      ctx.fillStyle = speckTones[Math.floor(h1 * speckTones.length) % speckTones.length];
+      ctx.beginPath();
+      ctx.ellipse(px, py, 1.4 + h2 * 1.2, 0.8 + h3 * 0.6, h2 * Math.PI, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -610,6 +703,10 @@ const CORPSE_PALETTES = {
   rabbit: [
     { fur: '#8a8072', belly: '#a89c8c' },
     { fur: '#5c4632', belly: '#7a604a' }
+  ],
+  bear: [
+    { fur: '#5c4126', belly: '#7a5c3a' },
+    { fur: '#d8d4c4', belly: '#eeece0' }
   ]
 };
 
@@ -646,9 +743,9 @@ export function drawCorpse(c, cam, ctx) {
   // parada) — un óvalo de cuerpo apoyado + cabeza caída al ras del piso, en
   // vez de reusar la pose de pie de drawWolf/drawDeer.
   const pal = (CORPSE_PALETTES[c.kind] || CORPSE_PALETTES.wolf)[c.variant] || CORPSE_PALETTES.wolf[0];
-  const big = c.kind === 'deer';
+  const big = c.kind === 'bear' ? 2 : (c.kind === 'deer' ? 1 : 0);
   const small = c.kind === 'rabbit';
-  const bodyRx = big ? 15 : (small ? 8 : 12), bodyRy = big ? 8 : (small ? 5 : 7);
+  const bodyRx = big === 2 ? 19 : (big === 1 ? 15 : (small ? 8 : 12)), bodyRy = big === 2 ? 11 : (big === 1 ? 8 : (small ? 5 : 7));
   ctx.fillStyle = pal.fur;
   ctx.beginPath();
   ctx.ellipse(sx, sy, bodyRx, bodyRy, 0.15, 0, Math.PI * 2);
@@ -660,7 +757,7 @@ export function drawCorpse(c, cam, ctx) {
   // Cabeza apoyada, caída hacia un costado.
   ctx.fillStyle = pal.fur;
   ctx.beginPath();
-  ctx.ellipse(sx + bodyRx * 0.85, sy + 2, big ? 6 : 5, big ? 4 : 3.5, 0.5, 0, Math.PI * 2);
+  ctx.ellipse(sx + bodyRx * 0.85, sy + 2, big === 2 ? 7.5 : (big ? 6 : 5), big === 2 ? 5.5 : (big ? 4 : 3.5), 0.5, 0, Math.PI * 2);
   ctx.fill();
   // Ojo cerrado: una rayita, no un puntito, para que se note que no está
   // parado/alerta.
@@ -722,6 +819,9 @@ export function drawGroundItem(g, cam, ctx) {
 // agua) la necesitan.
 export function isInWater(x, y) {
   return state.ponds.some(p => {
+    // Congelada en el bioma de nieve: es hielo sólido, no agua — se camina
+    // encima normal, sin frenar ni dejar ondas (ver maybeSpawnWaterRipple).
+    if (isSnowBiome(p.x, p.y)) return false;
     const dx = (x - p.x) / p.rw;
     const dy = (y - p.y) / p.rh;
     return dx * dx + dy * dy < 1;
@@ -804,15 +904,67 @@ export function drawPonds(ctx, cam, viewW, viewH) {
     const sx = p.x - cam.x;
     const sy = p.y - cam.y;
     if (sx < -150 || sx > viewW + 150 || sy < -150 || sy > viewH + 150) continue;
+    const frozen = isSnowBiome(p.x, p.y);
 
-    // Orilla: halo de barro/pasto húmedo que se funde con el suelo.
+    // Orilla: halo de barro/pasto húmedo (agua normal) o de nieve amontonada
+    // contra el borde del hielo (congelada) — incluso el halo cambia, no
+    // solo el cuerpo de la laguna.
     const shoreG = ctx.createRadialGradient(sx, sy, Math.max(p.rw, p.rh) * 0.7, sx, sy, Math.max(p.rw, p.rh) * 1.25);
-    shoreG.addColorStop(0, 'rgba(35,45,25,0.35)');
-    shoreG.addColorStop(1, 'rgba(35,45,25,0)');
+    if (frozen) {
+      shoreG.addColorStop(0, 'rgba(226,236,240,0.55)');
+      shoreG.addColorStop(1, 'rgba(226,236,240,0)');
+    } else {
+      shoreG.addColorStop(0, 'rgba(35,45,25,0.35)');
+      shoreG.addColorStop(1, 'rgba(35,45,25,0)');
+    }
     ctx.fillStyle = shoreG;
     ctx.beginPath();
     ctx.ellipse(sx, sy + 4, p.rw * 1.25, p.rh * 1.25, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    if (frozen) {
+      // Hielo: chato y quieto (nada de shimmer ni ondas animadas, es sólido),
+      // con un par de grietas fijas por laguna en vez de las franjas de olas.
+      // El hash es el mismo truco determinístico que ya usa drawSnowGround
+      // (misma laguna → misma forma de grietas siempre, no titila).
+      ctx.fillStyle = 'rgba(10,18,20,0.28)';
+      ctx.beginPath();
+      ctx.ellipse(sx + 5, sy + 7, p.rw, p.rh, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      const iceG = ctx.createRadialGradient(sx - p.rw * 0.25, sy - p.rh * 0.25, 4, sx, sy, p.rw);
+      iceG.addColorStop(0, '#eef6f8');
+      iceG.addColorStop(0.6, '#bdd8de');
+      iceG.addColorStop(1, '#8fadb6');
+      ctx.fillStyle = iceG;
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, p.rw, p.rh, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, p.rw, p.rh, 0, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+      ctx.lineWidth = 1.2;
+      const h1 = cellHash(p.x, p.y), h2 = cellHash(p.x + 33.1, p.y - 12.4);
+      for (let i = 0; i < 3; i++) {
+        const a = (h1 + i * 0.71) * Math.PI * 2;
+        const len = p.rw * (0.5 + cellHash(p.x + i * 7.3, p.y + i * 4.1) * 0.4);
+        const cx0 = sx + (h2 - 0.5) * p.rw * 0.6;
+        const cy0 = sy + (cellHash(p.y, p.x + i) - 0.5) * p.rh * 0.6;
+        ctx.beginPath();
+        ctx.moveTo(cx0 - Math.cos(a) * len * 0.5, cy0 - Math.sin(a) * len * 0.5);
+        ctx.lineTo(cx0 + Math.cos(a) * len * 0.5, cy0 + Math.sin(a) * len * 0.5);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, p.rw * 0.55, p.rh * 0.55, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      continue;
+    }
 
     ctx.fillStyle = 'rgba(15,22,16,0.35)';
     ctx.beginPath();
